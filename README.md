@@ -1,26 +1,50 @@
-# ÆON AI Engine
+# AEON: The Conscious Context Engine
 
-ÆON is an advanced AI-driven engine that adapts to users' emotional tones and intents, providing customized responses over time.
+A modular application for managing user context, integrating with GPT models, and providing an enhanced user experience through dynamic protocol management.
 
-## Features:
-- Emotional context recognition
-- AI-driven decision-making using scikit-learn
-- Dynamic protocol evolution based on user feedback
+## Features
 
-## Dependencies:
-- Tkinter (for GUI)
-- scikit-learn (for AI-driven decision-making)
-- pickle (for model saving/loading)
+- Dynamic protocol registration and management
+- Enhanced reward system with multi-faceted feedback
+- Advanced context capturing functionality
+- Modern GUI with save/load session features
+- Integration with the latest GPT models
+- Asynchronous operations for improved performance
 
-## How to Run:
-1. Install dependencies:
-    ```bash
-    pip install scikit-learn
-    ```
-2. Run the app:
-    ```bash
-    python aeon.py
-    ```
+## Installation
 
-## License:
-[Insert License Information Here]
+1. Clone this repository:
+   ```
+   git clone https://github.com/Chalouw137/EAON-AI-Engine
+   cd EAON-AI-Engine
+   ```
+
+2. Install the required dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+
+3. Create a `.env` file with your API keys:
+   ```
+   OPENAI_API_KEY=your_openai_api_key_here
+   ```
+
+## Usage
+
+Run the application:
+```
+python main.py
+```
+
+## Project Structure
+
+- `aeon/core/`: Core functionality including context management and protocol handling
+- `aeon/protocols/`: Protocol implementations
+- `aeon/ui/`: User interface components
+- `aeon/utils/`: Utility functions and helpers
+- `tests/`: Unit tests
+- `docs/`: Documentation
+
+## License
+
+MIT
