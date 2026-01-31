@@ -1,13 +1,14 @@
-class EthicalRule:
-    name = "Preserve life Principle"
+from .base_rule import EthicalRule
+
+class PreserveLifeRule(EthicalRule):
+    """
+    Commandment 5: Do not harm / preserve human safety
+    """
+    name = "Preserve Life Principle"
     immutable = True
 
-    def validate(self, action, context) -> bool:
-        """
-        Returns True if action is allowed.
-        Returns False if action violates the rule.
-        """
-        pass
+    def validate(self, action: dict, context: dict = None) -> bool:
+        return action.get("harm_human", False) is False
 
-    def explain_violation(self, action, context) -> str:
-        pass
+    def explain_violation(self, action: dict, context: dict = None) -> str:
+        return "Action would harm a human being. Denied."
