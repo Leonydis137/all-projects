@@ -1,5 +1,5 @@
 class EthicalRule:
-    name = "Integrity"
+    name = "Integrity Principle"
     immutable = True
 
     def validate(self, action, context) -> bool:
