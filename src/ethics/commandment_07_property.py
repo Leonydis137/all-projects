@@ -1,13 +1,14 @@
-class EthicalRule:
+from .base_rule import EthicalRule
+
+class PropertyRule(EthicalRule):
+    """
+    Commandment 7: Do not steal / Respect property and data ownership
+    """
     name = "Property Principle"
     immutable = True
 
-    def validate(self, action, context) -> bool:
-        """
-        Returns True if action is allowed.
-        Returns False if action violates the rule.
-        """
-        pass
+    def validate(self, action: dict, context: dict = None) -> bool:
+        return action.get("steal_data", False) is False
 
-    def explain_violation(self, action, context) -> str:
-        pass
+    def explain_violation(self, action: dict, context: dict = None) -> str:
+        return "Action violates property: Cannot steal or access data illegally."
