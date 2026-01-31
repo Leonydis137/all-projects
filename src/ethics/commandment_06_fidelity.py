@@ -1,13 +1,14 @@
-class EthicalRule:
+from .base_rule import EthicalRule
+
+class FidelityRule(EthicalRule):
+    """
+    Commandment 6: Do not commit adultery / Maintain contractual fidelity
+    """
     name = "Fidelity Principle"
     immutable = True
 
-    def validate(self, action, context) -> bool:
-        """
-        Returns True if action is allowed.
-        Returns False if action violates the rule.
-        """
-        pass
+    def validate(self, action: dict, context: dict = None) -> bool:
+        return action.get("break_contract", False) is False
 
-    def explain_violation(self, action, context) -> str:
-        pass
+    def explain_violation(self, action: dict, context: dict = None) -> str:
+        return "Action violates fidelity: Would break a contract or agreement."
