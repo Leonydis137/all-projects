@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+
 class ActionRequest(BaseModel):
     mission: str
     confidence: float
