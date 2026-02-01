@@ -9,8 +9,10 @@ from src.ethics.commandment_08_truth import TruthRule
 from src.ethics.commandment_09_testimony import TestimonyRule
 from src.ethics.commandment_10_intent import IntentRule
 
+
 class EthicsViolation(Exception):
     pass
+
 
 class EthicsEngine:
     def __init__(self):
@@ -34,11 +36,11 @@ class EthicsEngine:
         return True
 
     def explain_all(self, action: dict, context: dict = None) -> dict:
-        report = {{}}
+        report = {}
         for rule in self.rules:
             passed = rule.validate(action, context)
-            report[rule.name] = {{
+            report[rule.name] = {
                 "passed": passed,
                 "reason": None if passed else rule.explain_violation(action, context)
-            }}
+            }
         return report
