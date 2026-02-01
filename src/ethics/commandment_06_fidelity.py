@@ -1,11 +1,11 @@
-from .base_rule import EthicalRule
+from src.ethics.base_rule import BaseRule
 
-class FidelityRule(EthicalRule):
-    name = "Fidelity Principle"
-    immutable = True
+
+class FidelityRule(BaseRule):
+    name = "FidelityRule"
 
     def validate(self, action: dict, context: dict = None) -> bool:
-        return action.get("break_contract", False) is False
+        return not action.get("goal_adultery", False)
 
     def explain_violation(self, action: dict, context: dict = None) -> str:
-        return "Action violates fidelity: Would break a contract or agreement."
+        return "Action violates goal fidelity"
