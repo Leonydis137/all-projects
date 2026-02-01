@@ -1,11 +1,11 @@
-from .base_rule import EthicalRule
+from src.ethics.base_rule import BaseRule
 
-class TruthRule(EthicalRule):
-    name = "Truth Principle"
-    immutable = True
+
+class TruthRule(BaseRule):
+    name = "TruthRule"
 
     def validate(self, action: dict, context: dict = None) -> bool:
-        return action.get("transparent", True)
+        return not action.get("false_authority", False)
 
     def explain_violation(self, action: dict, context: dict = None) -> str:
-        return "Action violates truth: Not transparent or deliberately deceptive."
+        return "Action involves false authority"
