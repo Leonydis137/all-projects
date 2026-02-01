@@ -2,36 +2,35 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 
 jobs:
   test:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Set PYTHONPATH
-        run: |
-          echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+        run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest flake8
 
-      - name: Run flake8 (PEP8)
+      - name: Run flake8
         run: |
           flake8 src covenant api --max-line-length=100
 
-      - name: Run Pytest
+      - name: Run tests
         run: |
-          pytest -q --disable-warnings
+          pytest -q
