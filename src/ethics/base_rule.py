@@ -5,4 +5,4 @@ class BaseRule:
         raise NotImplementedError
 
     def explain_violation(self, action: dict, context: dict = None) -> str:
-        return f"Action violates {self.name}"
+        return "Ethical rule violated."
