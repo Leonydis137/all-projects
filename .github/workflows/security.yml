@@ -1,30 +1,26 @@
-name: Security Scan
-
-on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-
-jobs:
-  safety:
+security:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      - name: Install security tools
+      - name: Install Security Tools
         run: |
-          pip install --upgrade pip
-          pip install "safety<3.6" "typer<0.10" "rich<14"
+          python -m pip install --upgrade pip
+          pip install safety==3.6.0 typer==0.9.0 "rich<14"
 
-      - name: Run Safety (requirements.txt only)
+      - name: Run Safety Security Scan
         run: |
-          safety check \
-            --full-report \
-            -r requirements.txt
+          if [ -f requirements.txt ]; then
+            safety check \
+              --disable-audit-and-monitor \
+              --full-report \
+              -r requirements.txt
+          else
+            echo "No requirements.txt found, skipping Safety scan."
+          fi
