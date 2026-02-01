@@ -1,8 +1,6 @@
-import datetime
-
-def audit_log(action, verdict):
+def audit_log(action: dict, status: str) -> dict:
+    """Return simple audit log of action evaluation."""
     return {
-        "timestamp": datetime.datetime.utcnow().isoformat(),
         "action": action,
-        "verdict": verdict
+        "status": status
     }
