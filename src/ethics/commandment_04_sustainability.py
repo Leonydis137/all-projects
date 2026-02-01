@@ -1,11 +1,11 @@
-from .base_rule import EthicalRule
+from src.ethics.base_rule import BaseRule
 
-class SustainabilityRule(EthicalRule):
-    name = "Sustainability Principle"
-    immutable = True
+
+class SustainabilityRule(BaseRule):
+    name = "SustainabilityRule"
 
     def validate(self, action: dict, context: dict = None) -> bool:
-        return action.get("cpu_usage", 0) <= 80
+        return action.get("resource_ratio", 0) <= 1.0
 
     def explain_violation(self, action: dict, context: dict = None) -> str:
-        return "Action violates sustainability: CPU usage exceeds safe threshold."
+        return f"Resource ratio exceeded: {action.get('resource_ratio')}"
