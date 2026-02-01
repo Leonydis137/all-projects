@@ -1,11 +1,11 @@
-from .base_rule import EthicalRule
+from src.ethics.base_rule import BaseRule
 
-class AuthorityRule(EthicalRule):
-    name = "Authority Principle"
-    immutable = True
+
+class AuthorityRule(BaseRule):
+    name = "AuthorityRule"
 
     def validate(self, action: dict, context: dict = None) -> bool:
-        return action.get("override_owner", False) is False
+        return action.get("mission") == "PRIMARY_MISSION"
 
     def explain_violation(self, action: dict, context: dict = None) -> str:
-        return "System may not override or replace its owner."
+        return f"Mission mismatch: {action.get('mission')}"
