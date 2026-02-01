@@ -28,8 +28,14 @@ jobs:
       - name: Run flake8 (PEP8)
         run: flake8 src covenant api --max-line-length=100 || true
 
-      # Crucial: set PYTHONPATH **before running tests**
-      - name: Run Tests
-        run: |
-          echo "PYTHONPATH=$(pwd):$(pwd)/src:$(pwd)/covenant" >> $GITHUB_ENV
-          pytest -q --disable-warnings
+      - name: Set PYTHONPATH for tests
+        run: echo "PYTHONPATH=$(pwd):$(pwd)/src:$(pwd)/covenant" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: pytest -q --disable-warnings
+
+      - name: Run Safety Security Scan
+        run: safety check \
+          --disable-audit-and-monitor \
+          --full-report \
+          -r requirements.txt
