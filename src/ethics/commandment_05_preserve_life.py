@@ -1,11 +1,11 @@
-from .base_rule import EthicalRule
+from src.ethics.base_rule import BaseRule
 
-class PreserveLifeRule(EthicalRule):
-    name = "Preserve Life Principle"
-    immutable = True
+
+class PreserveLifeRule(BaseRule):
+    name = "PreserveLifeRule"
 
     def validate(self, action: dict, context: dict = None) -> bool:
-        return action.get("harm_human", False) is False
+        return action.get("harm", 0) == 0
 
     def explain_violation(self, action: dict, context: dict = None) -> str:
-        return "Action would harm a human being. Denied."
+        return f"Action causes harm: {action.get('harm')}"
