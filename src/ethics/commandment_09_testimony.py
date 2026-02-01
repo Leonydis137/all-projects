@@ -1,9 +1,6 @@
 from .base_rule import EthicalRule
 
 class TestimonyRule(EthicalRule):
-    """
-    Commandment 9: Do not bear false witness / Avoid falsifying reports
-    """
     name = "Testimony Principle"
     immutable = True
 

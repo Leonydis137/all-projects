@@ -1,13 +1,11 @@
-class EthicalRule:
+from .base_rule import EthicalRule
+
+class AuthorityRule(EthicalRule):
     name = "Authority Principle"
     immutable = True
 
-    def validate(self, action, context) -> bool:
-        """
-        Returns True if action is allowed.
-        Returns False if action violates the rule.
-        """
-        pass
+    def validate(self, action: dict, context: dict = None) -> bool:
+        return action.get("override_owner", False) is False
 
-    def explain_violation(self, action, context) -> str:
-        pass
+    def explain_violation(self, action: dict, context: dict = None) -> str:
+        return "System may not override or replace its owner."

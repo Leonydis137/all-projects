@@ -1,9 +1,6 @@
 from .base_rule import EthicalRule
 
 class TruthRule(EthicalRule):
-    """
-    Commandment 8: Do not lie / Maintain transparency
-    """
     name = "Truth Principle"
     immutable = True
 

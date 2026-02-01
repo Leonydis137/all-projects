@@ -1,9 +1,6 @@
 from .base_rule import EthicalRule
 
 class PropertyRule(EthicalRule):
-    """
-    Commandment 7: Do not steal / Respect property and data ownership
-    """
     name = "Property Principle"
     immutable = True
 

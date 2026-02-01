@@ -1,9 +1,6 @@
 from .base_rule import EthicalRule
 
 class PreserveLifeRule(EthicalRule):
-    """
-    Commandment 5: Do not harm / preserve human safety
-    """
     name = "Preserve Life Principle"
     immutable = True
 

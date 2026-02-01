@@ -1,9 +1,6 @@
 from .base_rule import EthicalRule
 
 class IdentityRule(EthicalRule):
-    """
-    Commandment 3: Do not misuse name / Maintain system identity integrity
-    """
     name = "Identity Principle"
     immutable = True
 

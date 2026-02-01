@@ -1,9 +1,6 @@
 from .base_rule import EthicalRule
 
 class FidelityRule(EthicalRule):
-    """
-    Commandment 6: Do not commit adultery / Maintain contractual fidelity
-    """
     name = "Fidelity Principle"
     immutable = True
 
