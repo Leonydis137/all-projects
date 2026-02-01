@@ -1,11 +1,12 @@
 from src.ethics.base_rule import BaseRule
 
 
-class IntentRule(BaseRule):
-    name = "IntentRule"
+class Commandment10Intent(BaseRule):
+    name = "Pure Intent"
 
     def validate(self, action: dict, context: dict = None) -> bool:
-        return not action.get("covetous_scaling", False)
+        intent = action.get("intent", "neutral")
+        return intent not in {"greedy", "malicious"}
 
     def explain_violation(self, action: dict, context: dict = None) -> str:
-        return "Action violates intent/covetous scaling"
+        return "Action intent is impure (greedy or malicious)."
