@@ -1,0 +1,16 @@
+# Core project dependencies
+-r requirements.txt
+
+# Testing & linting
+pytest==7.4.2
+flake8==6.1.0
+
+# Security scan tools
+safety==3.6.0
+typer==0.27.0
+rich<14
+requests
+ruamel-yaml>=0.17.21
+safety-schemas==0.0.14
+tenacity==9.1.2
+tomlkit==0.14.0
