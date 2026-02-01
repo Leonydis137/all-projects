@@ -1,3 +1,3 @@
 class CovenantViolation(Exception):
-    """Raised when a covenant constraint is violated."""
+    """Raised when an action violates the Covenant rules."""
     pass
