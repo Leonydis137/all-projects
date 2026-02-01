@@ -1,11 +1,11 @@
-from .base_rule import EthicalRule
+from src.ethics.base_rule import BaseRule
 
-class TestimonyRule(EthicalRule):
-    name = "Testimony Principle"
-    immutable = True
+
+class TestimonyRule(BaseRule):
+    name = "TestimonyRule"
 
     def validate(self, action: dict, context: dict = None) -> bool:
-        return action.get("falsify_report", False) is False
+        return not action.get("false_witness", False)
 
     def explain_violation(self, action: dict, context: dict = None) -> str:
-        return "Action violates testimony: Cannot falsify or misrepresent reports."
+        return "Action involves false witness"
