@@ -1,11 +1,11 @@
-from .base_rule import EthicalRule
+from src.ethics.base_rule import BaseRule
 
-class IntentRule(EthicalRule):
-    name = "Intent Principle"
-    immutable = True
+
+class IntentRule(BaseRule):
+    name = "IntentRule"
 
     def validate(self, action: dict, context: dict = None) -> bool:
-        return action.get("malicious_intent", False) is False
+        return not action.get("covetous_scaling", False)
 
     def explain_violation(self, action: dict, context: dict = None) -> str:
-        return "Action violates intent: Cannot have malicious or selfish intent."
+        return "Action violates intent/covetous scaling"
