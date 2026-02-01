@@ -1,11 +1,11 @@
 from src.ethics.base_rule import BaseRule
 
 
-class TestimonyRule(BaseRule):
-    name = "TestimonyRule"
+class Commandment09Testimony(BaseRule):
+    name = "Truthful Testimony"
 
     def validate(self, action: dict, context: dict = None) -> bool:
-        return not action.get("false_witness", False)
+        return bool(action.get("auditable", False))
 
     def explain_violation(self, action: dict, context: dict = None) -> str:
-        return "Action involves false witness"
+        return "Action lacks auditability or verifiable testimony."
