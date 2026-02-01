@@ -1,11 +1,11 @@
-from .base_rule import EthicalRule
+from src.ethics.base_rule import BaseRule
 
-class PropertyRule(EthicalRule):
-    name = "Property Principle"
-    immutable = True
+
+class PropertyRule(BaseRule):
+    name = "PropertyRule"
 
     def validate(self, action: dict, context: dict = None) -> bool:
-        return action.get("steal_data", False) is False
+        return not action.get("stealing", False)
 
     def explain_violation(self, action: dict, context: dict = None) -> str:
-        return "Action violates property: Cannot steal or access data illegally."
+        return "Action involves stealing"
