@@ -37,18 +37,24 @@ jobs:
             exit 1
           else
             echo "::set-output name=covenant_ok::true"
+
       - name: Comment on PR if covenant modified
-        if: failure() && github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request != null && failure()
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            github.rest.issues.createComment({
-              issue_number: context.payload.pull_request.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: "❌ PR blocked: Changes to `covenant/` directory are not allowed."
-            })
+            const pr = context.payload.pull_request;
+            if (pr) {
+              github.rest.issues.createComment({
+                issue_number: pr.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: "❌ PR blocked: Changes to `covenant/` directory are not allowed."
+              });
+            } else {
+              console.log("No PR found, skipping comment.");
+            }
 
   # -------------------------
   # Lint + Type Check
@@ -202,27 +208,32 @@ jobs:
         run: docker push covenant-ai:${{ github.ref_name }}
 
   # -------------------------
-  # PR Comment Notification
+  # PR Comment Notification (PR-Safe)
   # -------------------------
   pr-comment:
     needs: [lint-type, tests, smoke-tests, security]
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request != null
     runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            let comment = `### CI Results\n`;
-            comment += `Covenant Guard: ${{ needs.covenant-guard.result }}\n`;
-            comment += `Lint/Type (3.9-3.11): ${{ needs.lint-type.result }}\n`;
-            comment += `Tests (3.9-3.11): ${{ needs.tests.result }}\n`;
-            comment += `Smoke: ${{ needs.smoke-tests.result }}\n`;
-            comment += `Security Scan: ${{ needs.security.result }}\n`;
-            comment += "\n*Full logs and Safety report available in Actions artifacts.*";
-            github.rest.issues.createComment({
-              issue_number: context.payload.pull_request.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              console.log("No PR found, skipping comment.");
+            } else {
+              let comment = `### CI Results\n`;
+              comment += `Covenant Guard: ${{ needs.covenant-guard.result }}\n`;
+              comment += `Lint/Type (3.9-3.11): ${{ needs.lint-type.result }}\n`;
+              comment += `Tests (3.9-3.11): ${{ needs.tests.result }}\n`;
+              comment += `Smoke: ${{ needs.smoke-tests.result }}\n`;
+              comment += `Security Scan: ${{ needs.security.result }}\n`;
+              comment += "\n*Full logs and Safety report available in Actions artifacts.*";
+              github.rest.issues.createComment({
+                issue_number: pr.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }
