@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 export default function Infrastructure() {
   const [telemetry, setTelemetry] = useState<any>(null);
   const [nodeHistory, setNodeHistory] = useState<Record<string, number[]>>({});
+  const [incidents, setIncidents] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -26,6 +27,13 @@ export default function Infrastructure() {
       } catch (err) {
         console.error("Failed to fetch infra telemetry:", err);
       }
+      try {
+        const incRes = await fetch('/api/security/incidents');
+        if (incRes.ok) {
+          const incData = await incRes.json();
+          setIncidents(incData.slice(0, 5));
+        }
+      } catch(err) {}
     };
 
     fetchStatus();
@@ -202,31 +210,35 @@ export default function Infrastructure() {
             </div>
 
             <div className="h-32 flex items-end gap-1 px-2">
-              {Array.from({length: 80}).map((_, i) => (
-                <motion.div 
-                   key={i}
-                   initial={{ height: 10 }}
-                   animate={{ height: [`${20 + Math.random() * 60}%`, `${10 + Math.random() * 40}%`, `${40 + Math.random() * 50}%`] }}
-                   transition={{ repeat: Infinity, duration: 2 + Math.random() * 2, ease: 'easeInOut' }}
-                   className={`flex-1 ${i % 3 === 0 ? 'bg-neon-cyan/40' : i % 7 === 0 ? 'bg-neon-purple/40' : 'bg-white/5'} hover:brightness-150 transition-all`}
-                />
-              ))}
+              {systems.flatMap((node: any, sysIdx: number) => 
+                 node.data.slice(-20).map((loadValue: number, i: number) => (
+                    <motion.div 
+                       key={`${sysIdx}-${i}`}
+                       initial={{ height: 10 }}
+                       animate={{ height: `${Math.max(10, loadValue)}%` }}
+                       transition={{ duration: 0.5, ease: 'easeInOut' }}
+                       className={`flex-1 ${sysIdx % 2 === 0 ? 'bg-neon-cyan/40' : 'bg-neon-purple/40'} hover:brightness-150 transition-all`}
+                       title={`Core ${sysIdx}: ${loadValue.toFixed(1)}%`}
+                    />
+                 ))
+              )}
             </div>
           </div>
         </div>
         
         {/* Footer Alerts */}
         <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar">
-          {[
-            { msg: 'Security firewall update deployed to all edges', icon: ShieldAlert, color: 'text-neon-cyan' },
-            { msg: 'Vector registry resync complete (0.12ms drift)', icon: Database, color: 'text-neon-green' },
-            { msg: 'Anomalous traffic detected in Ghost_Protocol (Suppressed)', icon: Zap, color: 'text-neon-pink' },
-          ].map((alert, i) => (
+          {incidents.length > 0 ? incidents.map((alert, i) => (
             <div key={i} className="flex-shrink-0 flex items-center gap-3 px-4 py-2 border border-white/5 bg-panel-dark/40 cyber-panel">
-              <alert.icon className={`w-3 h-3 ${alert.color}`} />
-              <span className="text-[10px] text-white/50 uppercase font-mono whitespace-nowrap tracking-wider">{alert.msg}</span>
+              <ShieldAlert className="w-3 h-3 text-neon-pink" />
+              <span className="text-[10px] text-white/50 uppercase font-mono whitespace-nowrap tracking-wider">{alert.event} ({alert.id})</span>
             </div>
-          ))}
+          )) : (
+            <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 border border-white/5 bg-panel-dark/40 cyber-panel">
+              <Database className="w-3 h-3 text-neon-green" />
+              <span className="text-[10px] text-white/50 uppercase font-mono whitespace-nowrap tracking-wider">No Anomalies Detected. Perimeter Secure.</span>
+            </div>
+          )}
         </div>
       </div>
     </div>

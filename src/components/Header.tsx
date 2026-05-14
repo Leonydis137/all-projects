@@ -37,26 +37,7 @@ export default function Header() {
       </div>
 
       <div className="hidden lg:flex flex-1 justify-center px-12 pointer-events-none">
-        <div className="flex items-center gap-[2px] h-3 w-48 overflow-hidden opacity-30">
-          {Array.from({ length: 32 }).map((_, i) => (
-            <motion.div
-              key={i}
-              className="w-1 bg-neon-cyan"
-              animate={{
-                height: [
-                  `${20 + Math.random() * 80}%`,
-                  `${40 + Math.random() * 60}%`,
-                  `${20 + Math.random() * 80}%`,
-                ],
-              }}
-              transition={{
-                duration: 0.5 + Math.random() * 0.5,
-                repeat: Infinity,
-                ease: 'easeInOut',
-              }}
-            />
-          ))}
-        </div>
+        
       </div>
 
       <div className="flex items-center gap-6 pointer-events-auto">

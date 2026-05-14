@@ -27,6 +27,7 @@ export default function Sidebar() {
   
   const menuItems = [
     { id: 'overview', icon: Globe, label: 'Overview' },
+    { id: 'terminal', icon: TerminalIcon, label: 'Terminal' },
     { id: 'telemetry', icon: Activity, label: 'Telemetry' },
     { id: 'agents', icon: Users, label: 'Agents' },
     { id: 'memory', icon: Database, label: 'Memory' },

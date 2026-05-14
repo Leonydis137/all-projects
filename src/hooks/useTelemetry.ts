@@ -12,7 +12,7 @@ export function useTelemetry() {
     socket.on('connect', () => {
       console.log('[Telemetry] Linked to Kernel.');
       addLog({
-        id: Math.random().toString(36).substring(7),
+        id: `sys-${Date.now().toString(36)}`,
         source: 'KERNEL',
         message: 'Telemetry uplink established.',
         level: 'info',

@@ -18,6 +18,7 @@ export default function MissionControl() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [newObjective, setNewObjective] = useState('');
 
   const fetchMissions = async () => {
     setIsRefreshing(true);
@@ -37,25 +38,34 @@ export default function MissionControl() {
 
   useEffect(() => {
     fetchMissions();
-    const interval = setInterval(fetchMissions, 8000);
+    const interval = setInterval(fetchMissions, 2000);
     return () => clearInterval(interval);
   }, []);
 
   const initiateMission = async () => {
-    const id = `m-${Math.random().toString(36).substring(7)}`;
+    const objectiveToDeploy = newObjective.trim();
+    if (!objectiveToDeploy) {
+       alert('Please enter an objective to deploy.');
+       return;
+    }
+
+    const id = `m-${Date.now().toString(36)}`;
     try {
       const res = await fetch('/api/missions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id,
-          name: `AGENT_TASK_0x${Math.random().toString(16).substring(2,6).toUpperCase()}`,
+          name: `AGENT_TASK_0x${id.slice(-4).toUpperCase()}`,
           status: 'PENDING',
-          objective: 'Analyze localized neural fragments for semantic alignment.',
+          objective: objectiveToDeploy,
           progress: 0
         })
       });
-      if (res.ok) fetchMissions();
+      if (res.ok) {
+         setNewObjective('');
+         fetchMissions();
+      }
     } catch (err) {
       console.error("Failed to create mission:", err);
     }
@@ -80,7 +90,14 @@ export default function MissionControl() {
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 w-full md:w-auto">
+             <input 
+               type="text" 
+               value={newObjective}
+               onChange={(e) => setNewObjective(e.target.value)}
+               placeholder="Enter custom objective..."
+               className="bg-black/50 border border-white/10 px-4 py-3 text-xs font-mono text-[#00ff41] placeholder-[#00ff41]/30 w-full md:w-64 focus:outline-none focus:border-neon-cyan/50"
+             />
              <button 
               onClick={fetchMissions}
               className={cn(
@@ -92,7 +109,7 @@ export default function MissionControl() {
             </button>
             <button 
               onClick={initiateMission}
-              className="px-8 py-3 bg-neon-orange cyber-panel border-none text-black text-xs font-black uppercase tracking-widest hover:brightness-125 transition-all flex items-center gap-2 group"
+              className="px-8 py-3 bg-neon-orange cyber-panel border-none text-black text-xs font-black uppercase tracking-widest hover:brightness-125 transition-all flex items-center gap-2 group whitespace-nowrap"
             >
               <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> Deploy_Directive
             </button>
@@ -162,6 +179,13 @@ export default function MissionControl() {
                           />
                         </div>
                       </div>
+
+                      {mission.result && (
+                        <div className="mb-6 bg-black/40 border border-white/10 p-4 font-mono text-[10px] text-white/70 overflow-hidden whitespace-pre-wrap rounded-sm custom-scrollbar max-h-32 overflow-y-auto">
+                          <span className="text-[#00ff41] block mb-2 font-bold tracking-widest uppercase">{">>>"} EXECUTION_OUTPUT:</span>
+                          {mission.result}
+                        </div>
+                      )}
 
                       <div className="flex flex-wrap items-center gap-8">
                          <div className="flex items-center gap-2">

@@ -17,10 +17,15 @@ export default function Security() {
   const [incidents, setIncidents] = useState<{ time: string, event: string, id: string }[]>([]);
 
   useEffect(() => {
-    fetch('/api/security/incidents')
-      .then(res => res.json())
-      .then(data => setIncidents(data))
-      .catch(console.error);
+    const fetchIncidents = () => {
+      fetch('/api/security/incidents')
+        .then(res => res.json())
+        .then(data => setIncidents(data))
+        .catch(console.error);
+    };
+    fetchIncidents();
+    const interval = setInterval(fetchIncidents, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const togglePolicy = (index: number) => {

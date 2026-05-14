@@ -17,6 +17,7 @@ import MemoryExplorer from './pages/MemoryExplorer';
 import LogExplorer from './pages/LogExplorer';
 import MissionControl from './pages/MissionControl';
 import Infrastructure from './pages/Infrastructure';
+import NeuralSovereignDashboard from './pages/NeuralSovereignDashboard';
 import FirebaseSync from './components/FirebaseSync';
 import { useStore } from './store/useStore';
 import { useTelemetry } from './hooks/useTelemetry';
@@ -58,6 +59,8 @@ export default function App() {
     switch (activeView) {
       case 'overview':
         return <TopologyCanvas />;
+      case 'terminal':
+        return <div className="p-8 h-full bg-bg-dark overflow-y-auto"><NeuralSovereignDashboard /></div>;
       case 'telemetry':
         return <Telemetry />;
       case 'agents':
@@ -100,26 +103,6 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  const [glitchFactor, setGlitchFactor] = useState(0);
-
-  useEffect(() => {
-    const triggerGlitch = () => {
-      setGlitchFactor(1);
-      setTimeout(() => setGlitchFactor(0), 100);
-      if (Math.random() > 0.8) {
-        setTimeout(() => {
-          setGlitchFactor(0.5);
-          setTimeout(() => setGlitchFactor(0), 80);
-        }, 200);
-      }
-    };
-
-    const interval = setInterval(() => {
-      if (Math.random() > 0.96) triggerGlitch();
-    }, 4000);
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -224,21 +207,6 @@ export default function App() {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-bg-dark font-sans selection:bg-neon-cyan selection:text-black">
       <FirebaseSync />
-      
-      {/* Global Glitch Overlay */}
-      <AnimatePresence>
-        {glitchFactor > 0 && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: glitchFactor }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[999] pointer-events-none mix-blend-difference"
-          >
-            <div className="absolute inset-0 bg-neon-cyan/10 animate-[glitch_0.2s_infinite]" />
-            <div className="absolute inset-0 bg-neon-pink/10 animate-[glitch_0.3s_infinite_reverse]" />
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Global Background UI Elements - Memoized to prevent heavy re-renders */}
       <div className="fixed inset-0 pointer-events-none z-[100] overflow-hidden opacity-[0.4]">

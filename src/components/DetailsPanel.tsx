@@ -73,13 +73,6 @@ export default function DetailsPanel() {
     }
   };
 
-  const streamingData = useMemo(() => Array.from({ length: 40 }, () => ({
-    h1: Math.random() * 20 + 4,
-    h2: Math.random() * 40 + 8,
-    h3: Math.random() * 20 + 4,
-    dur: 0.8 + Math.random()
-  })), [selectedNodeId]);
-
   if (!selectedNode) return null;
 
   return (
@@ -176,30 +169,6 @@ export default function DetailsPanel() {
           </motion.div>
         </div>
 
-        {/* Streaming Data Visualizer */}
-        <div className="flex items-end gap-[1px] h-12 mb-2 px-1">
-          {streamingData.map((data, i) => (
-            <motion.div 
-              key={i}
-              initial={{ height: 2 }}
-              animate={{ 
-                height: [data.h1, data.h2, data.h3] 
-              }}
-              transition={{ 
-                repeat: Infinity, 
-                duration: data.dur, 
-                ease: 'linear' 
-              }}
-              className="flex-1 rounded-[1px]"
-              style={{ 
-                backgroundColor: selectedNode.color,
-                opacity: 0.2 + (i % 5) * 0.05
-              }}
-            />
-          ))}
-        </div>
-        <div className="text-[7px] uppercase tracking-[0.3em] text-white/20 text-center font-mono mb-4">Neural_Streaming_Buffer // HEX_LOAD_READY</div>
-        
         <div className="mt-8 relative h-16 border-t border-white/5 pt-4">
           <div className="flex justify-between items-center mb-2">
             <div className="flex flex-col">

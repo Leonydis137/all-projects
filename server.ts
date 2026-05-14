@@ -1,3 +1,4 @@
+import { exec } from "child_process";
 import express from "express";
 import path from "path";
 import os from "os";
@@ -71,7 +72,7 @@ async function startServer() {
     };
 
     io.emit("system:telemetry", telemetry);
-  }, 5000);
+  }, 1000);
 
   // Intercept console to emit real logs
   const originalLog = console.log;
@@ -79,9 +80,10 @@ async function startServer() {
   const originalError = console.error;
   const originalInfo = console.info;
 
+  let logCounter = 0;
   const emitLog = (level: string, args: any[]) => {
     io.emit("system:log", {
-      id: Math.random().toString(36).substring(7),
+      id: `sys-${logCounter++}`,
       source: 'SERVER',
       message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '),
       level: level,
@@ -104,12 +106,36 @@ async function startServer() {
     });
   });
 
+  let prevCpus = os.cpus();
   app.get("/api/v1/status", (req, res) => {
     const memTotal = os.totalmem();
     const memFree = os.freemem();
     const memUsage = (memTotal - memFree) / memTotal;
-    const cpus = os.cpus();
-    const avgLoad = os.loadavg()[0] / cpus.length;
+    const currentCpus = os.cpus();
+    const avgLoad = os.loadavg()[0] / currentCpus.length;
+
+    const nodes = currentCpus.map((cpu, index) => {
+      const prev = prevCpus[index];
+      const prevTotal = Object.values(prev.times).reduce((acc, tv) => acc + tv, 0);
+      const currTotal = Object.values(cpu.times).reduce((acc, tv) => acc + tv, 0);
+      
+      const prevIdle = prev.times.idle;
+      const currIdle = cpu.times.idle;
+
+      const totalDiff = currTotal - prevTotal;
+      const idleDiff = currIdle - prevIdle;
+      
+      const load = totalDiff === 0 ? 0 : 1 - (idleDiff / totalDiff);
+      
+      return {
+        id: `CORE_${String(index).padStart(2, '0')}`,
+        status: "SYNCHRONIZED",
+        load: Math.max(0, Math.min(1, load)),
+        model: cpu.model
+      };
+    });
+
+    prevCpus = currentCpus;
 
     res.json({
       status: "ACTIVE",
@@ -126,12 +152,7 @@ async function startServer() {
           totalMemory: memTotal,
           freeMemory: memFree
         },
-        nodes: cpus.map((cpu, index) => ({
-          id: `CORE_${String(index).padStart(2, '0')}`,
-          status: "SYNCHRONIZED",
-          load: (cpu.times.user / (cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq)) || 0,
-          model: cpu.model
-        }))
+        nodes
       }
     });
   });
@@ -183,17 +204,6 @@ async function startServer() {
   app.get("/api/missions", async (req, res) => {
     try {
       const missions = await topologyEngine.listMissions();
-      // If none exist, seed with some "Real" missions for the final form
-      if (missions.length === 0) {
-        const seedMissions = [
-          { id: 'MSN_01', name: 'GHOST_PROTOCOL', objective: 'Secure distributed vector shards across edge nodes.', status: 'EXECUTING', progress: 42, runtime: '12m 4s', cost: '0.12 $OS' },
-          { id: 'MSN_02', name: 'NEURAL_SYNC', objective: 'Harmonize weights between cluster nodes and the global brain.', status: 'PENDING', progress: 0, runtime: '0s', cost: '0.00 $OS' }
-        ];
-        for (const m of seedMissions) {
-          await topologyEngine.registerMission(m as any);
-        }
-        return res.json(seedMissions);
-      }
       res.json(missions);
     } catch (err) {
       res.status(500).json({ error: "Failed to list missions" });
@@ -210,11 +220,25 @@ async function startServer() {
   });
 
   // Security API
-  const securityIncidents = [
-    { time: new Date(Date.now() - 1000 * 60 * 12).toISOString(), event: 'REJECTED_UNAUTH_ACCESS', id: '0x1A2' },
-    { time: new Date(Date.now() - 1000 * 60 * 45).toISOString(), event: 'BRUTE_FORCE_PREVENTED', id: '0x81F' },
-    { time: new Date(Date.now() - 1000 * 60 * 120).toISOString(), event: 'ANOMALY_CLEANSED', id: '0x221' },
-  ];
+  let securityIncidents: any[] = [];
+
+  // Capture real anomalies (e.g., 404s, 500s) as security incidents
+  app.use((req, res, next) => {
+    res.on("finish", () => {
+      if (res.statusCode >= 400) {
+        const newEv = {
+          time: new Date().toISOString(),
+          event: `HTTP_${res.statusCode}_ANOMALY_ON_${req.path.replace(/\//g, '_').toUpperCase()}`,
+          id: `0x${Buffer.from(req.ip || 'unknown').toString('hex').substring(0, 6).toUpperCase() || 'SYS'}`
+        };
+        securityIncidents.unshift(newEv);
+        if (securityIncidents.length > 50) {
+          securityIncidents.pop();
+        }
+      }
+    });
+    next();
+  });
 
   app.get("/api/security/incidents", (req, res) => {
     res.json(securityIncidents);
@@ -227,18 +251,29 @@ async function startServer() {
       return res.status(400).json({ output: "Empty command." });
     }
     
-    // Some basic commands
-    switch (command.toLowerCase().trim()) {
-      case 'ping':
-        return res.json({ output: "pong" });
-      case 'status':
-        return res.json({ output: "Kernel is operating nominally. All subsystems green." });
-      case 'flush':
-        return res.json({ output: "Buffer cleared successfully." });
-      case 'help':
-        return res.json({ output: "Available commands: ping, status, flush, help" });
-      default:
-        return res.json({ output: `Command not recognized: ${command}` });
+    // Whitelist safe real commands and combine with system commands
+    const c = command.toLowerCase().trim();
+    if (['ping', 'help', 'flush', 'status'].includes(c)) {
+      switch (c) {
+        case 'ping': return res.json({ output: "pong" });
+        case 'status': return res.json({ output: "Kernel is operating nominally. All subsystems green." });
+        case 'flush': return res.json({ output: "Buffer cleared successfully." });
+        case 'help': return res.json({ output: "Safe commands: ping, status, flush, help, uptime, date, whoami, uname -a, free -m, ps aux" });
+      }
+    } else {
+      // Execute the safe OS commands
+      const safeOSCommands = ['uptime', 'date', 'whoami', 'uname -a', 'free -m', 'ps aux'];
+      if (safeOSCommands.some(cmd => command.trim().startsWith(cmd))) {
+         exec(command, (error, stdout, stderr) => {
+             if (error) {
+                 return res.json({ output: `Error: ${stderr || error.message}` });
+             }
+             return res.json({ output: stdout });
+         });
+         return; // async handling
+      } else {
+        return res.json({ output: `Command not recognized or unauthorized: ${command}` });
+      }
     }
   });
 
@@ -260,14 +295,16 @@ async function startServer() {
   });
 
   // System Tools API
-  app.get("/api/tools", (req, res) => {
-    res.json([
-      { id: 't1', name: 'VECTOR_EMBEDDER', status: 'READY', type: 'CORE', description: 'Transforms high-dimensional semantic data into normalized vector representations with Gemini.', lastUsed: new Date().toISOString() },
-      { id: 't2', name: 'QDRANT_SYNC', status: 'EXECUTING', type: 'EXTERNAL', description: 'Synchronizes logit space with Qdrant vector database storage layer.', lastUsed: new Date().toISOString() },
-      { id: 't3', name: 'AUTH_GATEWAY', status: 'READY', type: 'SECURITY', description: 'Validates cryptographic signatures for incoming memory payloads.', lastUsed: new Date().toISOString() },
-      { id: 't4', name: 'PROCESS_MONITOR', status: 'LOCKED', type: 'UTILITY', description: 'Hooks into kernel to intercept and log node telemetry.', lastUsed: new Date().toISOString() },
-      { id: 't5', name: 'TOPOLOGY_SYNC', status: 'READY', type: 'CORE', description: 'Coordinates distributed worker logic nodes.', lastUsed: new Date().toISOString() },
-    ]);
+  app.get("/api/tools", async (req, res) => {
+    const agents = await topologyEngine.listAgents();
+    res.json(agents.map(a => ({
+        id: a.id,
+        name: a.name,
+        status: a.status,
+        type: a.type,
+        description: `Agent ${a.name} performing ${a.capabilities.join(', ')}`,
+        lastUsed: a.lastSeen
+    })));
   });
 
   // Vector Search API

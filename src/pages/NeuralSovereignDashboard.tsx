@@ -11,16 +11,18 @@ interface EngineStatus {
 
 export default function NeuralSovereignDashboard() {
   const [data, setData] = useState<{ status: string; engine: EngineStatus } | null>(null);
-  const [logs, setLogs] = useState<string[]>(['> Initializing Sovereign Kernel...', '> Link established.']);
+  const [logs, setLogs] = useState<string[]>(['> Initializing Sovereign Kernel...']);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchData = async (isFirst = false) => {
       try {
         const response = await fetch('/api/v1/status');
         const result = await response.json();
         setData(result);
-        setLogs(prev => [...prev, `> Cluster update received: ${result.engine.timestamp}`]);
+        if (isFirst) {
+           setLogs(prev => [...prev, `> Link established.`, `> Cluster state: ${result.engine.state}`]);
+        }
       } catch (error) {
         console.error('Failed to sync with kernel:', error);
         setLogs(prev => [...prev, '> ERROR: KERNEL SYNC FAILED']);
@@ -29,8 +31,8 @@ export default function NeuralSovereignDashboard() {
       }
     };
 
-    fetchData();
-    const interval = setInterval(fetchData, 5000);
+    fetchData(true);
+    const interval = setInterval(() => fetchData(false), 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -110,14 +112,14 @@ export default function NeuralSovereignDashboard() {
           <h3 className="text-xs font-bold tracking-tighter uppercase">Kernel Telemetry</h3>
         </div>
         
-        <div className="flex-1 font-mono text-[11px] space-y-2 overflow-y-auto custom-scrollbar pr-2">
+        <div className="flex-1 font-mono text-[11px] space-y-2 overflow-y-auto custom-scrollbar pr-2 flex flex-col justify-end">
           <AnimatePresence initial={false}>
-            {logs.slice(-20).map((log, i) => (
+            {logs.slice(-100).map((log, i) => (
               <motion.div
                 key={`${i}-${log}`}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="text-[#00ff41]/80 break-words"
+                className="text-[#00ff41]/80 break-words whitespace-pre-wrap"
               >
                 {log}
               </motion.div>
@@ -145,7 +147,7 @@ export default function NeuralSovereignDashboard() {
                   });
                   const data = await res.json();
                   if (data.output) {
-                    setLogs(prev => [...prev, data.output]);
+                    setLogs(prev => [...prev, ...String(data.output).split('\n')]);
                   }
                 } catch (err) {
                   setLogs(prev => [...prev, '> ERROR: LOCAL EXECUTION SEVERED']);

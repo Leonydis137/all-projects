@@ -37,7 +37,7 @@ export default function Agents() {
 
   useEffect(() => {
     fetchAgents();
-    const interval = setInterval(fetchAgents, 5000);
+    const interval = setInterval(fetchAgents, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -49,32 +49,6 @@ export default function Agents() {
       }
     } catch (err) {
       console.error('Failed to deregister agent:', err);
-    }
-  };
-
-  const initializeAgent = async () => {
-    try {
-      const capabilities = ["DATA_PROCESSING", "NATURAL_LANGUAGE", "AUTONOMOUS_EXECUTION", "NETWORK_ANALYSIS"];
-      const randomCaps = capabilities.sort(() => 0.5 - Math.random()).slice(0, 2);
-      
-      const payload = {
-        id: `agt-${Math.random().toString(36).substring(7)}`,
-        name: `NEXUS_OPERATOR_${Math.floor(Math.random() * 999)}`,
-        status: "ACTIVE",
-        type: ["LOGIC_NODE", "PROCESSING_CORE", "OBSCURE_AGENT"][Math.floor(Math.random() * 3)],
-        capabilities: randomCaps
-      };
-
-      const response = await fetch('/api/agents/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (response.ok) {
-        fetchAgents();
-      }
-    } catch (err) {
-      console.error('Failed to init agent:', err);
     }
   };
 
@@ -121,12 +95,6 @@ export default function Agents() {
               )}
             >
               <RefreshCw className="w-4 h-4" />
-            </button>
-            <button 
-              onClick={initializeAgent}
-              className="px-8 py-3 bg-neon-purple cyber-panel border-none text-black text-xs font-black uppercase tracking-widest hover:brightness-125 transition-all flex items-center gap-2 group"
-            >
-              <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> Initialize_Entity
             </button>
           </div>
         </div>
