@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "SystemNode": {
+      "title": "System Node",
+      "description": "A node in the neural network topology.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "IDLE", "SUSPENDED", "BOOTING"] },
+        "health": { "type": "number" },
+        "load": { "type": "number" },
+        "color": { "type": "string" },
+        "description": { "type": "string" },
+        "details": { "type": "string" }
+      },
+      "required": ["id", "name", "type", "status", "health", "load", "color"]
+    },
+    "Mission": {
+      "title": "Mission",
+      "description": "An active or pending objective for the neural network.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "type": "string", "enum": ["EXECUTING", "PENDING", "SUCCESS", "FAILED"] },
+        "objective": { "type": "string" },
+        "progress": { "type": "number" }
+      },
+      "required": ["id", "name", "status" , "objective", "progress"]
+    },
+    "Tool": {
+      "title": "Tool",
+      "description": "A primitive tool available for agentic use.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "type": "string", "enum": ["READY", "EXECUTING", "LOCKED"] },
+        "type": { "type": "string", "enum": ["CORE", "UTILITY", "EXTERNAL"] },
+        "description": { "type": "string" },
+        "lastUsed": { "type": "string" }
+      },
+      "required": ["id", "name", "status", "type", "description"]
+    },
+    "Log": {
+      "title": "Log",
+      "description": "A system telemetry event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "type": "string" },
+        "message": { "type": "string" },
+        "level": { "type": "string", "enum": ["info", "warn", "error"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "source", "message", "level", "timestamp"]
+    }
+  },
+  "firestore": {
+    "nodes": {
+      "schema": "SystemNode",
+      "description": "The current state of system nodes."
+    },
+    "missions": {
+      "schema": "Mission",
+      "description": "The queue of objectives."
+    },
+    "tools": {
+      "schema": "Tool",
+      "description": "Available agentic primitives."
+    },
+    "logs": {
+      "schema": "Log",
+      "description": "The telemetry log stream."
+    }
+  }
+}

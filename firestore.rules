@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 3. Primitive Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'juanlouw.greyling@gmail.com' &&
+        request.auth.token.email_verified == true
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // 2. Validation Blueprints
+    function isValidSystemNode(data) {
+      return data.keys().hasAll(['id', 'name', 'type', 'status', 'health', 'load', 'color', 'throughput', 'latency', 'personality', 'description']) &&
+             data.keys().size() <= 15 &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.status in ['ACTIVE', 'IDLE', 'SUSPENDED', 'BOOTING'] &&
+             data.health is number && data.health >= 0 && data.health <= 100 &&
+             data.load is number && data.load >= 0 && data.load <= 100 &&
+             data.color is string && data.color.size() <= 7 &&
+             data.throughput is string && data.latency is string &&
+             data.personality is string && data.description is string;
+    }
+
+    function isValidMission(data) {
+      return data.keys().hasAll(['id', 'name', 'status', 'objective', 'progress']) &&
+             data.keys().size() <= 7 &&
+             data.status in ['EXECUTING', 'PENDING', 'SUCCESS', 'FAILED'] &&
+             data.progress is number && data.progress >= 0 && data.progress <= 100 &&
+             data.name is string && data.objective is string;
+    }
+
+    function isValidTool(data) {
+      return data.keys().hasAll(['id', 'name', 'status', 'type', 'description', 'lastUsed']) &&
+             data.keys().size() <= 8 &&
+             data.status in ['READY', 'EXECUTING', 'LOCKED'] &&
+             data.type in ['CORE', 'UTILITY', 'EXTERNAL'] &&
+             data.description is string && data.lastUsed is string;
+    }
+
+    function isValidLog(data) {
+      return data.keys().hasAll(['id', 'source', 'message', 'level', 'timestamp']) &&
+             data.keys().size() <= 7 &&
+             data.level in ['info', 'warn', 'error'] &&
+             data.timestamp is string &&
+             data.source is string && data.message is string;
+    }
+
+    // --- Collections ---
+
+    match /nodes/{nodeId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidSystemNode(incoming()) && isValidId(nodeId);
+      allow update: if isSignedIn() && (
+        (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'health', 'load', 'details'])) ||
+        isAdmin()
+      ) && isValidSystemNode(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /missions/{missionId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidMission(incoming()) && isValidId(missionId);
+      allow update: if isSignedIn() && isValidMission(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /tools/{toolId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidTool(incoming()) && isValidId(toolId);
+      allow update: if isSignedIn() && (
+         (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'lastUsed'])) ||
+         isAdmin()
+      ) && isValidTool(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /logs/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidLog(incoming()) && isValidId(logId);
+      allow update, delete: if isAdmin();
+    }
+  }
+}

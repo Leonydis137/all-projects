@@ -1,11 +1,12 @@
-<div align="center">
+# Omni Neural Sovereign
+Unified AI operating environment for distributed neural orchestration and autonomous agent nodes.
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+## Architecture
+- **Backend**: Express.js server integrated with Vite middleware.
+- **Service**: TopologyEngine manages kernel state and node propagation.
+- **Frontend**: React 19 + Vite 6 with Tailwind CSS 4.
+- **Vibe**: Cyber-technical technical dashboard.
 
-  <h1>Built with AI Studio</h2>
-
-  <p>The fastest path from prompt to production with Gemini.</p>
-
-  <a href="https://aistudio.google.com/apps">Start building</a>
-
-</div>
+## Environment Constraints
+- Runs on Port 3000 (Hardcoded by infrastructure).
+- Full-stack integration via `server.ts`.
