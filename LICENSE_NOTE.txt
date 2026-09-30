@@ -1,0 +1,3 @@
+Author & builder: Juan-louw Greyling <juanlouw.greyling@gmail.com>
+Research code. Not a miner for any existing chain. No external cryptographic review.
+Choose and add a LICENSE file before publishing.
