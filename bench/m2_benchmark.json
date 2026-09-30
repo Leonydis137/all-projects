@@ -1,0 +1,27 @@
+{
+  "reproducibility": {
+    "python_version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+    "platform": "Linux-6.18.44-fc-v37-x86_64-with-glibc2.39",
+    "processor": "x86_64",
+    "cpu_count": 1,
+    "warmup_iterations": 20,
+    "iterations": 200,
+    "timestamp_utc": "2026-09-20T22:20:17Z"
+  },
+  "memory_hard_python": {
+    "mean_seconds": 0.0015865357300000938,
+    "median_seconds": 0.0016170485000088775,
+    "p95_seconds": 0.0016553099999896403,
+    "stdev_seconds": 9.294099169784273e-05,
+    "ops_per_sec": 630.3041154956786
+  },
+  "memory_hard_native": {
+    "mean_seconds": 0.0010379722650003488,
+    "median_seconds": 0.0010845529999983228,
+    "p95_seconds": 0.0011251260000051388,
+    "stdev_seconds": 9.034930403382418e-05,
+    "ops_per_sec": 963.4168789660906
+  },
+  "speedup_mean": 1.5284953013648788,
+  "note": "Only the per-round buffer-fill loop was ported to C (uuma_native.mix_buffer); the hashlib.scrypt() calls inside the phase are unchanged in both variants, since scrypt is already a C call into OpenSSL via CPython's _hashlib. Profiling showed the buffer-fill loop and the scrypt calls were roughly comparable in cost (~1ms each of ~1.87ms total) before this change, so speedup on the buffer-fill loop alone translates to a partial, not full, speedup on the phase."
+}
