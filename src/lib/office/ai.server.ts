@@ -611,9 +611,25 @@ export async function aiSpendSummary(): Promise<{
   };
 }
 
+const AI_MODEL_MAX_ATTEMPTS = 2;
+const AI_MODEL_BASE_DELAY_MS = 800;
+const AI_MODEL_MAX_DELAY_MS = 8_000;
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function nextBackoffDelayMs(attempt: number) {
+  const delay = Math.min(AI_MODEL_BASE_DELAY_MS * 2 ** attempt, AI_MODEL_MAX_DELAY_MS);
+  const jitter = Math.floor(Math.random() * delay);
+  return delay + jitter;
+}
+
 /** One bounded retry on timeout, rate limit, or 5xx. Returns null if every attempt timed out. */
 async function callModel(target: ModelTarget, payload: string): Promise<Response | null> {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < AI_MODEL_MAX_ATTEMPTS; attempt += 1) {
     try {
       const res = await fetch(target.url, {
         method: "POST",
@@ -622,11 +638,11 @@ async function callModel(target: ModelTarget, payload: string): Promise<Response
         signal: AbortSignal.timeout(25_000),
       });
       if (res.status !== 429 && res.status < 500) return res;
-      if (attempt === 1) return res;
+      if (attempt === AI_MODEL_MAX_ATTEMPTS - 1) return res;
     } catch {
-      if (attempt === 1) return null;
+      if (attempt === AI_MODEL_MAX_ATTEMPTS - 1) return null;
     }
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await sleep(nextBackoffDelayMs(attempt));
   }
   return null;
 }
