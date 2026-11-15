@@ -37,14 +37,29 @@ export function founderWebhookPayload(notice: FounderNotice): string {
   });
 }
 
+const FOUNDER_WEBHOOK_MAX_ATTEMPTS = 3;
+const FOUNDER_WEBHOOK_BASE_DELAY_MS = 2_000;
+const FOUNDER_WEBHOOK_MAX_DELAY_MS = 30_000;
+
 type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
-export async function postFounderWebhook(
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function nextBackoffDelayMs(attempt: number) {
+  const delay = Math.min(FOUNDER_WEBHOOK_BASE_DELAY_MS * 2 ** (attempt - 1), FOUNDER_WEBHOOK_MAX_DELAY_MS);
+  const jitter = Math.floor(Math.random() * delay);
+  return delay + jitter;
+}
+
+async function deliverFounderWebhook(
   notice: FounderNotice,
-  rawUrl: string | undefined = env("FOUNDER_WEBHOOK_URL"),
-  fetchImpl: FetchLike = fetch,
+  url: URL | null,
+  fetchImpl: FetchLike,
 ): Promise<{ ok: boolean; detail: string }> {
-  const url = parseFounderWebhookUrl(rawUrl);
   if (!url) return { ok: false, detail: "No valid HTTPS founder webhook is configured." };
   try {
     const response = await fetchImpl(url.toString(), {
@@ -64,4 +79,20 @@ export async function postFounderWebhook(
   } catch {
     return { ok: false, detail: "The founder webhook could not be reached." };
   }
+}
+
+export async function postFounderWebhook(
+  notice: FounderNotice,
+  rawUrl: string | undefined = env("FOUNDER_WEBHOOK_URL"),
+  fetchImpl: FetchLike = fetch,
+): Promise<{ ok: boolean; detail: string }> {
+  const url = parseFounderWebhookUrl(rawUrl);
+  if (!url) return { ok: false, detail: "No valid HTTPS founder webhook is configured." };
+  let result = await deliverFounderWebhook(notice, url, fetchImpl);
+  for (let attempt = 1; attempt < FOUNDER_WEBHOOK_MAX_ATTEMPTS; attempt += 1) {
+    if (result.ok) return result;
+    await sleep(nextBackoffDelayMs(attempt));
+    result = await deliverFounderWebhook(notice, url, fetchImpl);
+  }
+  return result;
 }

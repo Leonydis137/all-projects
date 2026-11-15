@@ -77,4 +77,21 @@ describe("postFounderWebhook", () => {
     assert.equal(failed.ok, false);
     assert.equal(failed.detail.includes("500"), true);
   });
+
+  it("retries a failed founder webhook delivery before giving up", async () => {
+    let calls = 0;
+    const result = await postFounderWebhook(
+      NOTICE,
+      "https://hooks.example.com/x",
+      async () => {
+        calls += 1;
+        if (calls === 1) {
+          return new Response("no", { status: 500 });
+        }
+        return new Response("ok", { status: 200 });
+      },
+    );
+    assert.equal(result.ok, true);
+    assert.equal(calls, 2);
+  });
 });
