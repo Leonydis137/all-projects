@@ -71,6 +71,22 @@ export async function sendCustomerMail(
   return sendMail(to, subject, body);
 }
 
+const SMTP_MAX_ATTEMPTS = 3;
+const SMTP_BASE_DELAY_MS = 2_000;
+const SMTP_MAX_DELAY_MS = 30_000;
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function nextBackoffDelayMs(attempt: number) {
+  const delay = Math.min(SMTP_BASE_DELAY_MS * 2 ** (attempt - 1), SMTP_MAX_DELAY_MS);
+  const jitter = Math.floor(Math.random() * delay);
+  return delay + jitter;
+}
+
 async function sendMail(
   to: string,
   subject: string,
@@ -79,12 +95,22 @@ async function sendMail(
   const config = loadSmtpConfig();
   if (!config) return { ok: false, error: "SMTP is not configured. The customer was not emailed." };
   const payload = smtpData({ from: config.from, to, subject, body });
-  try {
-    await smtpSend(config, to, payload);
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: publicError(error, config.password) };
+  let result: { ok: boolean; error?: string } = {
+    ok: false,
+    error: "SMTP is not configured. The customer was not emailed.",
+  };
+  for (let attempt = 1; attempt <= SMTP_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      await smtpSend(config, to, payload);
+      return { ok: true };
+    } catch (error) {
+      result = { ok: false, error: publicError(error, config.password) };
+      if (attempt < SMTP_MAX_ATTEMPTS) {
+        await sleep(nextBackoffDelayMs(attempt));
+      }
+    }
   }
+  return result;
 }
 
 function smtpSend(config: SmtpConfig, to: string, payload: string): Promise<void> {
