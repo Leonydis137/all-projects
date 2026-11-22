@@ -1,22 +1,32 @@
 # OMNIS - all projects, one platform
-Author: Juan-Louw Greyling <juanlouw.greyling@gmail.com>
 
-One gateway that combines the features of every repo in this monorepo:
-governed actions (COVENANT), decisions, adaptive protocols, recommendations, statistics,
-a Claude assistant, a catalog of all 24 projects (4,800+ files analyzed) and static sites - behind one API and one web console.
+Author: Juan-Louw Greyling
+
+OMNIS is the integration gateway for this monorepo. The original projects remain under
+`merged/sources/`; the platform exposes selected capabilities through versioned APIs.
+A catalogue entry is not a claim that a project is fully integrated or production-ready.
+
+## Current gateway capabilities
+
+- COVENANT policy evaluation and governed decision routes.
+- AEON protocol endpoint and decision rules.
+- Project inventory and source catalogue.
+- Statistical and mathematical endpoints.
+- Optional external-model assistant (requires an explicitly configured provider key).
+- Persistent SQLite evidence ledger with append-only hash chaining.
+- Evidence integrity verification that explicitly does not claim source authenticity.
+
+## Run
 
 ```bash
 cd merged/platform
-pip install -r requirements.txt pytest
-python -m pytest -q          # 12 tests
-uvicorn omnis.api:app --port 8080   # console at http://localhost:8080, API docs at /docs
-# or: cp .env.example .env && docker compose up --build
+python -m pip install -r requirements.txt
+python -m pytest -q
+uvicorn omnis.api:app --host 127.0.0.1 --port 8080
 ```
-Set `ANTHROPIC_API_KEY` to enable `/v1/assistant`, `OMNIS_API_TOKEN` to require a bearer token on `/v1/*`.
 
-Example:
-```bash
-curl -s localhost:8080/v1/decide -H 'content-type: application/json' -d '{"context":{"risk_level":9}}'
-curl -s localhost:8080/v1/decide -H 'content-type: application/json' -d '{"context":{},"attributes":{"harm":3}}'   # 403 blocked by COVENANT
-```
-See `ARCHITECTURE.md` for how each project is combined. Refresh the catalog with `make catalog`.
+Set `OMNIS_API_TOKEN` to protect API routes. Set `OMNIS_EVIDENCE_DB` to select a persistent
+evidence database path. The API reports unavailable integrations honestly; it does not
+substitute fabricated data when credentials or source systems are absent.
+
+See [OMNIS research and integration roadmap](OMNIS-RESEARCH-AND-INTEGRATION.md).

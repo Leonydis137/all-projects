@@ -1,6 +1,7 @@
 name: CI
 on:
-  push: { branches: [main, unified] }
+  push:
+    branches: [main, unified]
   pull_request:
 jobs:
   detect:
@@ -13,21 +14,33 @@ jobs:
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json
-          ps=[p for p in json.load(open('projects.json'))['projects'] if p['kind'] in ('node','python')]
-          print('matrix='+json.dumps({'include':ps}))
+          projects = json.load(open("merged/sources/projects.json"))["projects"]
+          selected = [p for p in projects if p["kind"] in ("node", "python")]
+          print("matrix=" + json.dumps({"include": selected}))
           PY
   test:
     needs: detect
     runs-on: ubuntu-latest
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.detect.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with:
+          node-version: 20
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
-      - run: scripts/projects.sh install ${{ matrix.path }}
-      - run: scripts/projects.sh test ${{ matrix.path }}
+        with:
+          python-version: "3.11"
+      - run: bash merged/sources/scripts/projects.sh install ${{ matrix.path }}
+      - run: bash merged/sources/scripts/projects.sh test ${{ matrix.path }}
+  platform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r merged/platform/requirements.txt
+      - run: python -m pip install pytest
+      - run: PYTHONPATH=merged/platform python -m pytest -q merged/platform/tests
