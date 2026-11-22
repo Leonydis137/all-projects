@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from . import __version__, assistant, catalog, config, governance, inventory, mathops, sources, stats
 from .audit import audit as memory_audit
-from .postgres_audit import PostgresAuditLog
+from .postgres_audit import AuditIntegrityError, PostgresAuditLog
 from .decision import Rule, default_engine
 from .evidence import EvidenceLedger, EvidenceValidationError
 from .postgres_evidence import PostgresEvidenceLedger
@@ -279,6 +279,9 @@ def get_audit(limit: int = 50) -> dict:
         return {"valid": audit.verify(), "entries": audit.list(limit=limit)}
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    except AuditIntegrityError:
+        return JSONResponse(status_code=503, content={"valid": False, "entries": [],
+                                                      "reason": "audit_integrity_error"})
 
 
 for _name, _rel in config.STATIC_SITES.items():
