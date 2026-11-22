@@ -151,7 +151,7 @@ def test_identity_endpoint_uses_database_principal_and_attributes_audit(monkeypa
         email="user@example.test",
         display_name="Test User",
         role="operator",
-        credential_prefix=TOKEN[:20],
+        credential_prefix=TOKEN[:32],
     )
     test_audit = AuditLog()
     monkeypatch.setattr(api, "audit", test_audit)
