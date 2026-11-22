@@ -79,6 +79,43 @@ class PostgresEvidenceLedger:
             "source_authenticity": "unverified",
         }
 
+    def _head_hash(self, cur) -> str:
+        """Validate the retained chain head before extending the evidence ledger."""
+        cur.execute(
+            """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
+                      declared_license, submitted_by, idempotency_key, record_json, previous_hash, record_hash
+               FROM omnis.evidence ORDER BY sequence DESC LIMIT 2"""
+        )
+        rows = cur.fetchall()
+        if not rows:
+            return "0" * 64
+        latest = rows[0]
+        latest_record = self._record(latest)
+        latest_body = {key: latest_record[key] for key in (
+            "source_uri", "content_sha256", "acquired_at", "acquisition_method",
+            "license", "submitted_by", "idempotency_key"
+        ) if key in latest_record}
+        expected = hashlib.sha256(
+            _canonical({"record": latest_body, "previous_hash": latest["previous_hash"]})
+        ).hexdigest()
+        if expected != latest["record_hash"]:
+            raise RuntimeError("evidence ledger head failed integrity verification")
+        if len(rows) > 1:
+            previous = rows[1]
+            previous_record = self._record(previous)
+            previous_body = {key: previous_record[key] for key in (
+                "source_uri", "content_sha256", "acquired_at", "acquisition_method",
+                "license", "submitted_by", "idempotency_key"
+            ) if key in previous_record}
+            previous_expected = hashlib.sha256(
+                _canonical({"record": previous_body, "previous_hash": previous["previous_hash"]})
+            ).hexdigest()
+            if previous_expected != previous["record_hash"] or latest["previous_hash"] != previous["record_hash"]:
+                raise RuntimeError("evidence ledger predecessor failed integrity verification")
+        elif latest["previous_hash"] != "0" * 64:
+            raise RuntimeError("evidence ledger first record has an invalid predecessor")
+        return latest["record_hash"]
+
     def append(self, record: dict[str, Any]) -> dict[str, Any]:
         """Append through the configured audit log; unpaired writes are rejected."""
         if self._audit_log is None:
@@ -94,6 +131,7 @@ class PostgresEvidenceLedger:
             with db.cursor() as cur:
                 cur.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
                 cur.execute("SELECT pg_advisory_xact_lock(hashtext('omnis.evidence'))")
+                previous_hash = self._head_hash(cur)
                 if clean.get("idempotency_key"):
                     cur.execute(
                         """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
@@ -122,9 +160,6 @@ class PostgresEvidenceLedger:
                         if cur.fetchone() is None:
                             raise RuntimeError("existing evidence row has no corresponding audit event")
                         return self._record(existing)
-                cur.execute("SELECT record_hash FROM omnis.evidence ORDER BY sequence DESC LIMIT 1")
-                previous = cur.fetchone()
-                previous_hash = previous["record_hash"] if previous else "0" * 64
                 digest = hashlib.sha256(_canonical({"record": clean, "previous_hash": previous_hash})).hexdigest()
                 cur.execute(
                     """INSERT INTO omnis.evidence
