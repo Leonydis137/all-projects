@@ -13,13 +13,15 @@ def _sslmode_for_params(params: dict[str, str]) -> str:
     raw_hostaddr = params.get("hostaddr")
     if not raw_host and os.environ.get("PGHOST"):
         raise ValueError("PostgreSQL host resolved from PGHOST is unsupported; specify host in OMNIS_DATABASE_URL")
-    if raw_hostaddr is None and os.environ.get("PGHOSTADDR"):
+    if not raw_hostaddr and os.environ.get("PGHOSTADDR"):
         raw_hostaddr = os.environ["PGHOSTADDR"]
     hosts = [item.strip().lower() for item in raw_host.split(",") if item.strip()]
     hostaddrs = [item.strip() for item in (raw_hostaddr or "").split(",") if item.strip()]
     local_names = {"localhost"}
 
     def is_loopback(address: str) -> bool:
+        if address.startswith("[") and address.endswith("]"):
+            address = address[1:-1]
         try:
             return ipaddress.ip_address(address).is_loopback
         except ValueError:
