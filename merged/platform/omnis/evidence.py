@@ -82,8 +82,12 @@ def _validate(record: dict[str, Any]) -> dict[str, Any]:
                 or not isinstance(attestation.get("public_key_b64"), str)
                 or not isinstance(attestation.get("signature_b64"), str)):
             raise EvidenceValidationError("provenance_attestation has an invalid structure")
-        if statement.get("content_sha256") != clean["content_sha256"] or statement.get("source_uri") != clean["source_uri"]:
-            raise EvidenceValidationError("provenance_attestation does not match the evidence source and digest")
+        if (statement.get("content_sha256") != clean["content_sha256"]
+                or statement.get("source_uri") != clean["source_uri"]
+                or statement.get("acquired_at") != clean["acquired_at"]
+                or statement.get("fetcher_id") != clean["submitted_by"]
+                or statement.get("claim") != "platform_observed_fetch"):
+            raise EvidenceValidationError("provenance_attestation does not match the evidence source, digest, time, or fetcher")
         try:
             public_bytes = base64.b64decode(
                 attestation["public_key_b64"] + "=" * (-len(attestation["public_key_b64"]) % 4),
