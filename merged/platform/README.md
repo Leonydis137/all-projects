@@ -105,3 +105,23 @@ does not validate the source's claims, and does not establish the licence assert
 by the caller. The evidence record therefore continues to report
 `source_authenticity: unverified` / `not_established`. Pin the signing-key fingerprint
 out-of-band and manage key rotation as an explicit trust change.
+
+
+## Tenant identity foundation
+
+Migration `006_tenant_identity.sql` adds PostgreSQL tenants, principals, active
+memberships, role assignments, and revocable API credentials. Tenant credentials
+are high-entropy `omnis_live_...` tokens; only keyed HMAC-SHA256 digests are stored.
+Set `OMNIS_API_KEY_PEPPER` to a separate secret containing at least 32 characters.
+The authenticated `GET /v1/identity/me` probe requires both a tenant credential and
+an explicit `X-OMNIS-Tenant` UUID header. Its audit events are attributed to the
+authenticated principal ID.
+
+This is a staged rollout: tenant credentials are accepted only by the identity
+probe. Existing evidence, governance, and business endpoints continue to use the
+legacy `OMNIS_API_TOKEN` and are not yet tenant-isolated. Do not issue tenant
+credentials for general API use until evidence storage, idempotency, authorization,
+and audit queries enforce tenant boundaries. The migration creates no users,
+tenants, or credentials automatically; provision them through a separate trusted
+database-owner process. The runtime database role receives SELECT-only access to
+identity tables.
