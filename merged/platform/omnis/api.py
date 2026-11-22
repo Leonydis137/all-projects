@@ -19,6 +19,7 @@ from .evidence import EvidenceLedger, EvidenceValidationError
 from .postgres_evidence import EvidenceIntegrityError, PostgresEvidenceLedger
 from .protocols import AEON, Context
 from .recommend import Recommender
+from .identity import IdentityUnavailable, InvalidCredential, Principal, authenticate_api_key
 from .source_fetch import (
     SourceConfigurationError,
     SourcePolicyError,
@@ -53,9 +54,30 @@ async def audit_api_requests(request: Request, call_next):
     if not path.startswith("/v1/") or (path == "/v1/audit" and request.method == "GET"):
         return await call_next(request)
 
+    # Tenant credentials are deliberately accepted only by the identity probe
+    # until all resource stores enforce tenant scoping.
+    principal = None
+    identity_error = None
+    if path == "/v1/identity/me":
+        authorization = request.headers.get("authorization", "")
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not token:
+            identity_error = InvalidCredential("missing or invalid bearer credential")
+        else:
+            try:
+                principal = authenticate_api_key(token, request.headers.get("x-omnis-tenant"))
+            except (InvalidCredential, IdentityUnavailable) as exc:
+                identity_error = exc
+        request.state.identity_principal = principal
+        request.state.identity_error = identity_error
+
     event = {"method": request.method, "path": path}
+    actor = principal.principal_id if principal is not None else None
     try:
-        audit.record("http.request.started", event)
+        if actor:
+            audit.record("http.request.started", event, actor=actor)
+        else:
+            audit.record("http.request.started", event)
     except Exception:
         return JSONResponse(status_code=503, content={"detail": "audit_unavailable"})
 
@@ -63,24 +85,42 @@ async def audit_api_requests(request: Request, call_next):
         response = await call_next(request)
     except Exception as exc:
         try:
-            audit.record("http.request.failed", {**event, "error_type": type(exc).__name__})
+            if actor:
+                audit.record("http.request.failed", {**event, "error_type": type(exc).__name__}, actor=actor)
+            else:
+                audit.record("http.request.failed", {**event, "error_type": type(exc).__name__})
         except Exception:
             pass
         raise
 
     try:
-        audit.record("http.request.completed", {**event, "status_code": response.status_code})
+        if actor:
+            audit.record("http.request.completed", {**event, "status_code": response.status_code}, actor=actor)
+        else:
+            audit.record("http.request.completed", {**event, "status_code": response.status_code})
     except Exception:
         response.headers["X-OMNIS-Audit-Status"] = "incomplete"
     return response
 
 
 def auth(authorization: Optional[str] = Header(default=None)) -> None:
-    # Fail closed: an unset token must never turn protected routes public.
+    # Legacy shared-token authentication remains for existing single-tenant routes.
+    # Tenant credentials are intentionally not accepted here until those routes
+    # and their storage adapters enforce tenant isolation.
     if not config.API_TOKEN:
         raise HTTPException(503, "API authentication is not configured")
     if authorization != f"Bearer {config.API_TOKEN}":
         raise HTTPException(401, "missing or invalid bearer token")
+
+
+def tenant_identity(request: Request) -> Principal:
+    principal = getattr(request.state, "identity_principal", None)
+    error = getattr(request.state, "identity_error", None)
+    if isinstance(error, IdentityUnavailable):
+        raise HTTPException(503, str(error)) from error
+    if isinstance(error, InvalidCredential) or principal is None:
+        raise HTTPException(401, "missing or invalid tenant credential")
+    return principal
 
 
 def gated(kind: str, attrs: Optional[dict] = None) -> dict:
@@ -203,6 +243,23 @@ def health():
         if not healthy:
             return JSONResponse(status_code=503, content=payload)
         return payload
+
+
+@app.get("/v1/identity/me")
+def get_identity(principal: Principal = Depends(tenant_identity)) -> dict:
+    """Return the authenticated principal and permissions for the selected tenant."""
+    audit.record("identity.access", {"tenant_id": principal.tenant_id,
+                                      "principal_id": principal.principal_id},
+                 actor=principal.principal_id)
+    return {
+        "tenant_id": principal.tenant_id,
+        "principal_id": principal.principal_id,
+        "email": principal.email,
+        "display_name": principal.display_name,
+        "role": principal.role,
+        "permissions": sorted(principal.permissions),
+        "credential_prefix": principal.credential_prefix,
+    }
 
 
 @app.get("/v1/catalog", dependencies=[Depends(auth)])
