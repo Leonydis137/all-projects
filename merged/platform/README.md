@@ -131,3 +131,22 @@ To create the first tenant and owner credential, use the separate owner-only
 `OMNIS_PROVISIONING_DATABASE_URL` with `python -m omnis.provision_identity`.
 The command prints the generated API token once after commit; store it in a secret
 manager immediately. Never use the provisioning DSN as the runtime database URL.
+
+
+## Tenant-scoped evidence API
+
+After applying migrations 006 and 007, tenant credentials can use:
+
+- `POST /v1/tenant/evidence` — append evidence as the authenticated principal.
+- `GET /v1/tenant/evidence` — list only the selected tenant's evidence.
+- `GET /v1/tenant/evidence/verify` — verify that tenant's hash chain.
+
+Send the tenant UUID in `X-OMNIS-Tenant`. The role must include
+`evidence:write` for append or `evidence:read` for list/verify. The API assigns
+`submitted_by` from the authenticated principal; clients cannot spoof the actor.
+The table has forced PostgreSQL row-level security, tenant-specific idempotency
+keys, independent hash chains, and append-only triggers. Each operation records
+the authenticated principal as the audit actor.
+
+The existing global `/v1/evidence` routes remain on the legacy shared-token path.
+They are not transparently migrated or exposed through tenant credentials.
