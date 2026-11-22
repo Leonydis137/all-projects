@@ -1,5 +1,6 @@
 # Author: Juan-Louw Greyling <juanlouw.greyling@gmail.com>
 """OMNIS gateway: one FastAPI app exposing the features of every merged project."""
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -19,7 +20,7 @@ sources.wire()
 app = FastAPI(title="OMNIS", version=__version__, description="All projects, one platform.")
 engine = default_engine()
 aeon = AEON()
-evidence = EvidenceLedger(config.PLATFORM_DIR / "var" / "evidence.sqlite3")
+evidence = EvidenceLedger(os.environ.get("OMNIS_EVIDENCE_DB", str(config.PLATFORM_DIR / "var" / "evidence.sqlite3")))
 STATIC = Path(__file__).parent / "static"
 
 
