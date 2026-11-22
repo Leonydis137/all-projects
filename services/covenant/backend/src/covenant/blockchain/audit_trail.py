@@ -84,3 +84,7 @@ class AuditBlockchain:
             }
             for block in self.chain[start_index:]
         ]
+
+
+# Merged in from covenant-enterprise: Merkle-based audit trail
+from .blockchain_audit_trail import AuditEntry, MerkleProof, BlockchainAuditTrail  # noqa: E402,F401

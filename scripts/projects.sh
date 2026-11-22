@@ -4,9 +4,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 cmd="${1:-list}"; target="${2:-all}"
-paths() { python3 -c "import json;[print(p['path']+' '+p['kind']) for p in json.load(open('projects.json'))['projects']]"; }
+paths() { python3 -c "import json;[print(p['path']+' '+p['kind']+' '+p.get('dir',p['path'])) for p in json.load(open('projects.json'))['projects']]"; }
 run() { # path kind action
-  local p=$1 k=$2 a=$3; pushd "$p" >/dev/null || return
+  local p=$1 k=$2 a=$3 dir=$4; pushd "$dir" >/dev/null || return
   case "$k:$a" in
     node:install|expo:install) npm install ;;
     node:test|expo:test) npm test --if-present ;;
@@ -24,9 +24,9 @@ run() { # path kind action
 case "$cmd" in
   list) paths | awk '{printf "%-45s %s\n", $1, $2}' ;;
   install|test|build)
-    paths | while read -r p k; do
+    paths | while read -r p k dir; do
       [ "$target" = all ] || [ "$target" = "$p" ] || continue
-      echo "==> $cmd $p"; run "$p" "$k" "$cmd" || echo "   FAILED: $p"
+      echo "==> $cmd $p"; run "$p" "$k" "$cmd" "$dir" || echo "   FAILED: $p"
     done ;;
   *) echo "usage: $0 list|install|test|build [path|all]"; exit 1 ;;
 esac

@@ -1,33 +1,126 @@
 {
-  "author": "Juan-Louw Greyling <juanlouw.greyling@gmail.com>",
-  "projects": [
-    {"path":"apps/web/vantage-ars","kind":"node","summary":"Vantage-ARS public website + AI-staffed founder office"},
-    {"path":"apps/web/vantage-workspace","kind":"node","summary":"Vantage-ARS founder-controlled workspace and agents"},
-    {"path":"apps/web/omnigpt-web","kind":"node","summary":"OmniGPT web assistant (React + Vite)"},
-    {"path":"apps/web/quantum-flow-os","kind":"node","summary":"Quantum Flow OS ethical ontology framework"},
-    {"path":"apps/web/quantum-flow-os-vite","kind":"node","summary":"Vite prototype of Quantum Flow OS UI"},
-    {"path":"apps/web/neural-sovereign","kind":"node","summary":"Omni Neural Sovereign AI operating environment"},
-    {"path":"apps/web/project-genesis","kind":"node","summary":"Project Genesis autonomous AI lab"},
-    {"path":"apps/web/codeevolve-ai","kind":"node","summary":"CodeEvolveAI"},
-    {"path":"apps/web/sa-threads","kind":"node","summary":"SA Threads online fashion store"},
-    {"path":"apps/web/hybrid-sat-solver-portal","kind":"static","summary":"Hybrid SAT solver benchmark portal"},
-    {"path":"apps/web/site-mirror-studio","kind":"pnpm","summary":"Site Mirror authorized website archiving tool"},
-    {"path":"apps/sites/portfolio","kind":"static","summary":"Personal GitHub Pages site"},
-    {"path":"apps/sites/jacobsbay-site","kind":"static","summary":"Jacobs Bay accommodation site"},
-    {"path":"apps/sites/jacobsbay-accommodation","kind":"static","summary":"Jacobs Bay accommodation landing page"},
-    {"path":"apps/sites/topsecret","kind":"static","summary":"Single-page HTML experiment"},
-    {"path":"apps/mobile/synapse-os","kind":"android","summary":"Synapse OS Android app (Kotlin)"},
-    {"path":"apps/mobile/chatgpt-android-os","kind":"android","summary":"ChatGPT Android OS starter"},
-    {"path":"apps/mobile/omnigpt-mobile","kind":"expo","summary":"OmniGPT React Native / Expo"},
-    {"path":"services/covenant","kind":"python","summary":"COVENANT constitutional multi-agent AI platform (canonical V5.0)"},
-    {"path":"services/autonomous-ai","kind":"python","summary":"GPT-2 + PPO autonomous agent script"},
-    {"path":"services/aeon-engine","kind":"python","summary":"AEON conscious context engine"},
-    {"path":"services/codegenie","kind":"python","summary":"Codegenie"},
-    {"path":"services/discussion-bot","kind":"python","summary":"Streamlit chatbot"},
-    {"path":"research/gcd-pvsnp","kind":"python","summary":"Geometric-Computational Duality, P vs NP"},
-    {"path":"research/circuit-lower-bounds","kind":"python","summary":"Circuit lower bounds research platform"},
-    {"path":"research/uuma","kind":"python","summary":"UUMA compositional proof-of-work framework"},
-    {"path":"tools/omgithub","kind":"node","summary":"OMGithub automation scripts and workflows"},
-    {"path":"tools/self-improving-code-analyzer","kind":"python","summary":"Self-improving code analyzer (latest v14)"}
-  ]
+ "author": "Juan-Louw Greyling <juanlouw.greyling@gmail.com>",
+ "projects": [
+  {
+   "path": "apps/web/vantage-ars",
+   "kind": "node",
+   "summary": "Vantage-ARS: public site (v5) + legacy founder workspace (workspace-v2/)"
+  },
+  {
+   "path": "apps/web/omnigpt-web",
+   "kind": "node",
+   "summary": "OmniGPT web assistant (React + Vite)"
+  },
+  {
+   "path": "apps/web/quantum-flow-os",
+   "kind": "node",
+   "summary": "Quantum Flow OS ethical ontology framework (+ prototypes/vite-ui)"
+  },
+  {
+   "path": "apps/web/neural-sovereign",
+   "kind": "node",
+   "summary": "Omni Neural Sovereign AI operating environment"
+  },
+  {
+   "path": "apps/web/project-genesis",
+   "kind": "node",
+   "summary": "Project Genesis autonomous AI lab"
+  },
+  {
+   "path": "apps/web/codeevolve-ai",
+   "kind": "node",
+   "summary": "CodeEvolveAI"
+  },
+  {
+   "path": "apps/web/sa-threads",
+   "kind": "node",
+   "summary": "SA Threads online fashion store"
+  },
+  {
+   "path": "apps/web/hybrid-sat-solver-portal",
+   "kind": "static",
+   "summary": "Hybrid SAT solver benchmark portal"
+  },
+  {
+   "path": "apps/web/site-mirror-studio",
+   "kind": "pnpm",
+   "summary": "Site Mirror authorized website archiving tool"
+  },
+  {
+   "path": "apps/sites/portfolio",
+   "kind": "static",
+   "summary": "Personal GitHub Pages site (+ restricted/ page)"
+  },
+  {
+   "path": "apps/sites/jacobsbay-site",
+   "kind": "static",
+   "summary": "Jacobs Bay accommodation site (+ _drafts/)"
+  },
+  {
+   "path": "apps/mobile/synapse-os",
+   "kind": "android",
+   "summary": "Synapse OS Android app (Kotlin)"
+  },
+  {
+   "path": "apps/mobile/chatgpt-android-os",
+   "kind": "android",
+   "summary": "ChatGPT Android OS starter"
+  },
+  {
+   "path": "apps/mobile/omnigpt-mobile",
+   "kind": "expo",
+   "summary": "OmniGPT React Native / Expo"
+  },
+  {
+   "path": "services/covenant",
+   "kind": "python",
+   "summary": "COVENANT constitutional multi-agent platform: V5 backend/frontend + merged covenant-ai and covenant-enterprise modules (agents, 10 commandments, zero-trust, optimizer)",
+   "dir": "services/covenant/backend"
+  },
+  {
+   "path": "services/autonomous-ai",
+   "kind": "python",
+   "summary": "GPT-2 + PPO autonomous agent script"
+  },
+  {
+   "path": "services/aeon-engine",
+   "kind": "python",
+   "summary": "AEON conscious context engine"
+  },
+  {
+   "path": "services/codegenie",
+   "kind": "python",
+   "summary": "Codegenie"
+  },
+  {
+   "path": "research/gcd-pvsnp",
+   "kind": "python",
+   "summary": "Geometric-Computational Duality, P vs NP"
+  },
+  {
+   "path": "research/circuit-lower-bounds",
+   "kind": "python",
+   "summary": "Circuit lower bounds research platform"
+  },
+  {
+   "path": "research/uuma",
+   "kind": "python",
+   "summary": "UUMA compositional proof-of-work framework"
+  },
+  {
+   "path": "tools/omgithub",
+   "kind": "node",
+   "summary": "OMGithub automation scripts and workflows (+ _variants/combined)"
+  },
+  {
+   "path": "tools/self-improving-code-analyzer",
+   "kind": "python",
+   "summary": "Self-improving code analyzer (latest v14)"
+  },
+  {
+   "path": "services/streamlit/discussion-bot",
+   "kind": "python",
+   "summary": "Streamlit chatbot"
+  }
+ ]
 }

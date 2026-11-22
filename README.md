@@ -8,10 +8,10 @@ Full history of every original repo is preserved.
 | `apps/web` | React/TS web apps: Vantage-ARS, OmniGPT, Quantum Flow OS, Neural Sovereign, Project Genesis, CodeEvolveAI, Site Mirror Studio, SA Threads, SAT portal |
 | `apps/sites` | Static sites: portfolio, Jacobs Bay |
 | `apps/mobile` | Android (Kotlin) and React Native/Expo apps |
-| `services` | Python services: COVENANT (constitutional multi-agent platform), AEON engine, autonomous agent, Codegenie, chatbot |
+| `services` | Python services: COVENANT (3 repos merged into one tested package), AEON engine, autonomous agent, Codegenie, Streamlit apps |
 | `research` | P vs NP / circuit lower bounds / UUMA proof-of-work research |
 | `tools` | OMGithub automation, self-improving code analyzer |
-| `archive` | Superseded variants, templates and stubs (kept for reference) |
+| `archive` | Empty/stub repos kept for reference |
 
 ## Use
 ```bash

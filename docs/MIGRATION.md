@@ -6,10 +6,10 @@ Every original commit is preserved in this repo's history (each import merge com
 | Old folder | New location |
 |---|---|
 | vantage-ars | apps/web/vantage-ars |
-| vantage | apps/web/vantage-workspace |
+| vantage | apps/web/vantage-ars/workspace-v2 (merged with the Vantage-ARS site) |
 | omnigpt-web | apps/web/omnigpt-web |
 | Quantum-Flow-OS | apps/web/quantum-flow-os |
-| vite-react-wmjavfy2 | apps/web/quantum-flow-os-vite |
+| vite-react-wmjavfy2 | apps/web/quantum-flow-os/prototypes/vite-ui |
 | neural_sovereign | apps/web/neural-sovereign |
 | Project-Genesis | apps/web/project-genesis |
 | CodeEvolveAI | apps/web/codeevolve-ai |
@@ -18,25 +18,23 @@ Every original commit is preserved in this repo's history (each import merge com
 | Site-Mirror-Studio | apps/web/site-mirror-studio |
 | juan-louw.greyling.github.io | apps/sites/portfolio |
 | jacobsbayaccomodationtemp.io | apps/sites/jacobsbay-site |
-| Jacobsbay-Accomodation | apps/sites/jacobsbay-accommodation |
-| topsecret | apps/sites/topsecret |
+| Jacobsbay-Accomodation | apps/sites/jacobsbay-site/_drafts/accommodation-v0.html |
+| topsecret | apps/sites/portfolio/restricted/index.html |
 | Synapse-OS | apps/mobile/synapse-os |
 | chatgpt-android-os | apps/mobile/chatgpt-android-os |
 | omnigpt-mobile | apps/mobile/omnigpt-mobile |
-| Covenant | services/covenant |
+| Covenant, Covenant-ai, Covenant-Enterprise | services/covenant (code merged, see its MERGE_NOTES.md) |
 | autonomous-AI | services/autonomous-ai |
 | EAON-AI-Engine | services/aeon-engine |
 | Codegenie | services/codegenie |
-| Discussion_Bot | services/discussion-bot |
+| Discussion_Bot | services/streamlit/discussion-bot |
 | GCD-PvsNP | research/gcd-pvsnp |
 | solution_to_p-np | research/circuit-lower-bounds |
 | uuma | research/uuma |
 | PlayGround | tools/omgithub |
 | self-improving-code-analyzer-v14 | tools/self-improving-code-analyzer |
-| Combined | archive/omgithub-combined |
-| Covenant-ai | archive/covenant-ai |
-| Covenant-Enterprise | archive/covenant-enterprise |
-| blank-app | archive/templates/blank-app |
+| Combined | tools/omgithub (differing files in `_variants/combined/`) |
+| blank-app | services/streamlit/blank-app-template |
 | Nexus, Predictor, combined-repositories | archive/stubs/ |
 
 ## Removed
@@ -46,4 +44,5 @@ Every original commit is preserved in this repo's history (each import merge com
 
 ## Notes
 - Per-project `.github/workflows/*` are inert in a monorepo (GitHub only reads the root). The root `ci.yml` replaces them; port individual workflows as needed.
+- Merged rather than just moved: Covenant (3 repos -> 1 package, tests pass), Vantage (site + workspace), Quantum Flow OS (+ vite prototype), Jacobsbay and OMGithub variants.
 - Kept as-is: zips/tarballs inside projects (e.g. `Vantage-Ars.zip`, `Site-Mirror-completed.zip`).
