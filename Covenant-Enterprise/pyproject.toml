@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "covenant-ai"
+version = "0.1.0"
+description = "Constitutional Alignment Framework for Autonomous Intelligence"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    {name = "Covenant.AI Team", email = "team@covenant-ai.org"}
+]
+license = {text = "MIT"}
+keywords = ["ai", "autonomous", "constitutional", "ethics", "alignment", "safety"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/Leonydis138/Covenant-Enterprise"
+Repository = "https://github.com/Leonydis138/Covenant-Enterprise"
+Issues = "https://github.com/Leonydis138/Covenant-Enterprise/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = "src.covenant.*"
