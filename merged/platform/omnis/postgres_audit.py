@@ -183,19 +183,28 @@ class PostgresAuditLog:
         return result
 
     def health(self) -> bool:
-        """Bounded liveness/integrity probe; full-chain verification remains explicit."""
+        """Bounded latest-two-event probe; full-chain verification remains explicit."""
         try:
             with self._connect() as db:
                 with db.cursor() as cur:
                     cur.execute(
                         """SELECT occurred_at, actor, event_type, payload, previous_hash, event_hash, event_json
-                           FROM omnis.audit_event ORDER BY sequence DESC LIMIT 1"""
+                           FROM omnis.audit_event ORDER BY sequence DESC LIMIT 2"""
                     )
-                    row = cur.fetchone()
-            if row is None:
+                    rows = cur.fetchall()
+            if not rows:
                 return True
-            event = self._decode(row)
-            return hashlib.sha256(_canonical(event)).hexdigest() == row["event_hash"]
+            latest = self._decode(rows[0])
+            latest_hash = hashlib.sha256(_canonical(latest)).hexdigest()
+            if latest_hash != rows[0]["event_hash"]:
+                return False
+            if len(rows) > 1:
+                previous = self._decode(rows[1])
+                previous_hash = hashlib.sha256(_canonical(previous)).hexdigest()
+                return (previous_hash == rows[1]["event_hash"]
+                        and latest["prev"] == rows[1]["event_hash"]
+                        and latest["i"] == previous["i"] + 1)
+            return latest["i"] == 0 and latest["prev"] == _ZERO_HASH
         except Exception:
             _LOG.exception("OMNIS audit health probe failed")
             return False
