@@ -81,7 +81,7 @@ def test_postgres_ledger_rejects_update_delete_and_truncate(postgres_dsn):
     import psycopg
     from omnis.postgres_evidence import PostgresEvidenceLedger
 
-    ledger = PostgresEvidenceLedger(postgres_dsn)
+    ledger = _ledger(postgres_dsn)
     row = ledger.append(_record("immutable-" + uuid4().hex))
     for statement in (
         "UPDATE omnis.evidence SET submitted_by = 'tampered' WHERE sequence = %s",
@@ -133,7 +133,7 @@ def test_postgres_evidence_idempotency(postgres_dsn):
     from omnis.evidence import EvidenceValidationError
     from omnis.postgres_evidence import PostgresEvidenceLedger
 
-    ledger = PostgresEvidenceLedger(postgres_dsn)
+    ledger = _ledger(postgres_dsn)
     key = "retry-" + uuid4().hex
     first = ledger.append({**_record("idempotent"), "idempotency_key": key})
     retry = ledger.append({**_record("idempotent"), "idempotency_key": key})
@@ -148,7 +148,7 @@ def test_postgres_accepts_uppercase_http_scheme(postgres_dsn):
 
     record = _record("uppercase-" + uuid4().hex)
     record["source_uri"] = record["source_uri"].replace("https://", "HTTPS://", 1)
-    appended = PostgresEvidenceLedger(postgres_dsn).append(record)
+    appended = _ledger(postgres_dsn).append(record)
     assert appended["source_uri"].startswith("HTTPS://")
 
 
