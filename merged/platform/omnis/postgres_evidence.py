@@ -229,9 +229,10 @@ class PostgresEvidenceLedger:
                 with db.cursor() as cur:
                     head, checked = self._head_hash(cur)
             return {"valid": True, "checked": checked, "head": head}
-        except Exception:
+        except Exception as exc:
             _LOG.exception("OMNIS evidence health probe failed")
-            return {"valid": False, "checked": 0, "reason": "storage_error"}
+            reason = "verification_timeout" if type(exc).__name__ in {"QueryCanceled", "QueryCanceledError"} else "storage_error"
+            return {"valid": False, "checked": 0, "reason": reason}
 
     def verify(self) -> dict[str, Any]:
         previous_hash = "0" * 64
