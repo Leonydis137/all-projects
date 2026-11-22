@@ -4,6 +4,12 @@ import pytest
 from omnis.postgres_connection import _sslmode_for_params
 
 
+@pytest.fixture(autouse=True)
+def _clear_libpq_environment(monkeypatch):
+    for name in ("PGSERVICE", "PGHOST", "PGHOSTADDR"):
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_loopback_connections_may_use_plaintext(monkeypatch):
     for name in ("PGSERVICE", "PGHOST", "PGHOSTADDR"):
         monkeypatch.delenv(name, raising=False)
