@@ -14,7 +14,7 @@ from .audit import audit as memory_audit
 from .postgres_audit import AuditIntegrityError, PostgresAuditLog
 from .decision import Rule, default_engine
 from .evidence import EvidenceLedger, EvidenceValidationError
-from .postgres_evidence import PostgresEvidenceLedger
+from .postgres_evidence import EvidenceIntegrityError, PostgresEvidenceLedger
 from .protocols import AEON, Context
 from .recommend import Recommender
 
@@ -247,6 +247,8 @@ def record_evidence(body: EvidenceIn) -> dict:
         result = evidence.append(body.model_dump())
         audit.record("evidence.append", {"sequence": result["sequence"], "record_hash": result["record_hash"]})
         return result
+    except EvidenceIntegrityError:
+        return JSONResponse(status_code=503, content={"detail": "evidence_integrity_error"})
     except EvidenceValidationError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -255,6 +257,8 @@ def record_evidence(body: EvidenceIn) -> dict:
 def list_evidence(limit: int = 100, before: int | None = None) -> dict:
     try:
         return {"records": evidence.list(limit=limit, before=before)}
+    except EvidenceIntegrityError:
+        return JSONResponse(status_code=503, content={"detail": "evidence_integrity_error"})
     except EvidenceValidationError as exc:
         raise HTTPException(422, str(exc)) from exc
 
