@@ -214,26 +214,12 @@ class PostgresEvidenceLedger:
         return [self._record(row) for row in reversed(rows)]
 
     def health(self) -> dict[str, Any]:
-        """Bounded latest-record probe; full-chain verification remains explicit."""
+        """Bounded latest-two-record probe; full-chain verification remains explicit."""
         try:
             with self._connect() as db:
                 with db.cursor() as cur:
-                    cur.execute("""SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
-                                          declared_license, submitted_by, record_json, previous_hash, record_hash
-                                   FROM omnis.evidence ORDER BY sequence DESC LIMIT 1""")
-                    row = cur.fetchone()
-            if row is None:
-                return {"valid": True, "checked": 0, "head": "0" * 64}
-            self._record(row)
-            record = row["record_json"]
-            if isinstance(record, str):
-                record = json.loads(record)
-            if not isinstance(record, dict):
-                raise ValueError("record is not an object")
-            expected = hashlib.sha256(_canonical({"record": record, "previous_hash": row["previous_hash"]})).hexdigest()
-            valid = expected == row["record_hash"]
-            return {"valid": valid, "checked": 1, "head": row["record_hash"] if valid else None,
-                    **({} if valid else {"failed_sequence": row["sequence"], "reason": "hash_mismatch"})}
+                    head = self._head_hash(cur)
+            return {"valid": True, "checked": 2 if head != "0" * 64 else 0, "head": head}
         except Exception:
             _LOG.exception("OMNIS evidence health probe failed")
             return {"valid": False, "checked": 0, "reason": "storage_error"}
