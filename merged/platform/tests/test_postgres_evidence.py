@@ -119,6 +119,13 @@ def test_evidence_and_audit_commit_atomically(postgres_dsn):
 
     appended = ledger.append_with_audit(_record(marker), audit)
     assert appended["submitted_by"] == marker
+    events = audit.list(limit=500)
+    assert any(
+        event["kind"] == "evidence.append"
+        and event["payload"].get("sequence") == appended["sequence"]
+        and event["payload"].get("record_hash") == appended["record_hash"]
+        for event in events
+    )
     assert audit.verify() is True
 
 
