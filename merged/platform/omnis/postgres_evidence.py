@@ -78,7 +78,10 @@ class PostgresEvidenceLedger:
                 stored_time = stored_time.replace(tzinfo=timezone.utc)
             else:
                 stored_time = stored_time.astimezone(timezone.utc)
-            expected_time = datetime.fromisoformat(payload["acquired_at"].replace("Z", "+00:00")).astimezone(timezone.utc)
+            parsed_time = datetime.fromisoformat(payload["acquired_at"].replace("Z", "+00:00"))
+            if parsed_time.tzinfo is None:
+                raise EvidenceIntegrityError("stored evidence timestamp has no timezone")
+            expected_time = parsed_time.astimezone(timezone.utc)
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             raise EvidenceIntegrityError("stored evidence timestamp is malformed") from exc
         if stored_time != expected_time:
