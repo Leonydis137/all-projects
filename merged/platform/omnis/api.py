@@ -19,7 +19,7 @@ from .evidence import EvidenceLedger, EvidenceValidationError
 from .postgres_evidence import EvidenceIntegrityError, PostgresEvidenceLedger
 from .protocols import AEON, Context
 from .recommend import Recommender
-from .source_fetch import (SourcePolicyError, SourceUnavailable, acquire_and_attest, public_key_document)
+from .source_fetch import (SourceConfigurationError, SourcePolicyError, SourceUnavailable, acquire_and_attest, public_key_document)
 
 sources.wire()
 app = FastAPI(title="OMNIS", version=__version__, description="All projects, one platform.")
@@ -338,9 +338,10 @@ def fetch_source(body: SourceFetchIn) -> dict:
         return {"evidence": stored, **result}
     except SourcePolicyError as exc:
         raise HTTPException(403, str(exc)) from exc
+    except SourceConfigurationError as exc:
+        raise HTTPException(503, str(exc)) from exc
     except SourceUnavailable as exc:
-        status = 503 if "not configured" in str(exc) or "signing key" in str(exc) else 502
-        raise HTTPException(status, str(exc)) from exc
+        raise HTTPException(502, str(exc)) from exc
     except EvidenceIntegrityError:
         return JSONResponse(status_code=503, content={"detail": "evidence_integrity_error"})
     except EvidenceValidationError as exc:
