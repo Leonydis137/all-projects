@@ -43,7 +43,7 @@ async def audit_api_requests(request: Request, call_next):
     the response carries an explicit incomplete-audit header instead.
     """
     path = request.url.path
-    if not path.startswith("/v1/") or path == "/v1/audit":
+    if not path.startswith("/v1/") or (path == "/v1/audit" and request.method == "GET"):
         return await call_next(request)
 
     event = {"method": request.method, "path": path}
