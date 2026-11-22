@@ -103,7 +103,7 @@ class PostgresAuditLog:
             raise ValueError("audit timestamp column does not match canonical event body")
         return event
 
-    def _record_cursor(self, cur, kind: str, payload: dict) -> dict:
+    def _record_cursor(self, cur, kind: str, payload: dict, actor: str | None = None) -> dict:
         if not isinstance(kind, str) or not kind:
             raise ValueError("audit event kind must be a non-empty string")
         if not isinstance(payload, dict):
@@ -136,8 +136,12 @@ class PostgresAuditLog:
             index = 0
             previous_hash = _ZERO_HASH
         timestamp = time.time()
+        event_actor = self.actor if actor is None else actor
+        if not isinstance(event_actor, str) or not event_actor.strip():
+            raise ValueError("audit actor must be a non-empty string")
+        event_actor = event_actor.strip()
         body = {"i": index, "ts": timestamp, "kind": kind, "payload": payload,
-                "prev": previous_hash, "actor": self.actor}
+                "prev": previous_hash, "actor": event_actor}
         event_hash = hashlib.sha256(_canonical(body)).hexdigest()
         event_json = json.dumps(body, sort_keys=True, default=str, separators=(",", ":"))
         occurred_at = datetime.fromtimestamp(timestamp, tz=timezone.utc)
@@ -145,21 +149,21 @@ class PostgresAuditLog:
             """INSERT INTO omnis.audit_event
                (occurred_at, actor, event_type, payload, previous_hash, event_hash, event_json)
                VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s)""",
-            (occurred_at, self.actor, kind, json.dumps(payload, sort_keys=True, default=str),
+            (occurred_at, event_actor, kind, json.dumps(payload, sort_keys=True, default=str),
              previous_hash, event_hash, event_json),
         )
         return {**body, "hash": event_hash}
 
-    def record_in_transaction(self, db, kind: str, payload: dict) -> dict:
+    def record_in_transaction(self, db, kind: str, payload: dict, actor: str | None = None) -> dict:
         """Append using a caller-owned transaction; caller controls commit/rollback."""
         with db.cursor() as cur:
-            return self._record_cursor(cur, kind, payload)
+            return self._record_cursor(cur, kind, payload, actor)
 
-    def record(self, kind: str, payload: dict) -> dict:
+    def record(self, kind: str, payload: dict, actor: str | None = None) -> dict:
         with self._connect() as db:
             with db.cursor() as cur:
                 cur.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
-                result = self._record_cursor(cur, kind, payload)
+                result = self._record_cursor(cur, kind, payload, actor)
         return result
 
     def list(self, limit: int = 50) -> list[dict[str, Any]]:
