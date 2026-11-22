@@ -65,3 +65,43 @@ Hash integrity does not prove source authenticity or actor identity and cannot
 independently detect deletion of a final suffix without an external checkpoint.
 Existing SQLite evidence and in-memory audit history are not automatically migrated;
 export, import, and verify historical records before switching storage.
+
+## Controlled source acquisition
+
+The authenticated `POST /v1/source/fetch` endpoint retrieves one source and appends
+its SHA-256 digest plus a signed fetch-observation attestation to the evidence ledger.
+The fetched body is held in memory only and is not persisted by this connector.
+`GET /v1/source/attestation-key` returns the Ed25519 public key and its SHA-256
+fingerprint. Consumers must pin that fingerprint through an independent channel;
+trusting a public key solely because the same API returned it is not sufficient.
+
+Configure both environment variables before enabling the connector:
+
+- `OMNIS_SOURCE_ALLOWLIST`: comma-separated exact hostnames (IDNA-normalized); no
+  wildcard or suffix matching.
+- `OMNIS_PROVENANCE_PRIVATE_KEY_B64`: secret-store value containing a base64url
+  encoded 32-byte Ed25519 private key. Never commit this value or ship it to clients.
+- `OMNIS_SOURCE_FETCHER_ID`: optional stable service identity (default
+  `omnis-source-fetcher`).
+
+Outbound policy is deliberately restrictive: HTTPS only, port 443 only, exact
+allowlisted hostname, no URL credentials, query string or fragment, no IP-literal
+hosts, no redirects, TLS certificate/hostname verification, DNS resolution checked
+for public IP addresses and the selected IP pinned for the actual socket connection.
+Responses using content encoding are rejected, the response is limited to 2 MiB, and
+the HTTP connection/read timeout is 8 seconds (DNS resolution follows the operating system resolver's timeout policy). No proxy environment variable or caller-supplied
+header is used.
+
+Each stored attestation signs a canonical statement containing the source URI,
+acquisition time, content digest and length, media type, fetcher identity, selected
+public IP, checked DNS answers, and the no-redirect/TLS-verification observations.
+The signature is verified before the record is accepted and the attestation is
+included in the evidence hash-chain commitment for both SQLite and PostgreSQL.
+
+**Important trust boundary:** this is a platform-signed observation that OMNIS fetched
+these bytes over verified HTTPS from an allowlisted host. It is not a publisher
+signature, does not prove the publisher's identity beyond TLS hostname validation,
+does not validate the source's claims, and does not establish the licence asserted
+by the caller. The evidence record therefore continues to report
+`source_authenticity: unverified` / `not_established`. Pin the signing-key fingerprint
+out-of-band and manage key rotation as an explicit trust change.

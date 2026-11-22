@@ -1,10 +1,11 @@
 """Persistent, append-only evidence ledger for OMNIS.
 
 The ledger verifies record integrity, not the truth of a submitter's claims.
-Source authenticity requires independent retrieval or cryptographic signatures.
+Publisher authenticity requires an independently trusted publisher identity or signature; a platform fetch signature attests only to the fetcher's observation.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -62,6 +63,52 @@ def _validate(record: dict[str, Any]) -> dict[str, Any]:
         if key_length > 256:
             raise EvidenceValidationError("idempotency_key must not exceed 256 UTF-8 bytes")
         clean["idempotency_key"] = idempotency_key.strip()
+    attestation = record.get("provenance_attestation")
+    if attestation is not None:
+        if not isinstance(attestation, dict):
+            raise EvidenceValidationError("provenance_attestation must be an object")
+        try:
+            encoded_attestation = json.dumps(
+                attestation, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+            ).encode("utf-8")
+        except (TypeError, ValueError, UnicodeEncodeError) as exc:
+            raise EvidenceValidationError("provenance_attestation must be canonical JSON data") from exc
+        if len(encoded_attestation) > 16_384:
+            raise EvidenceValidationError("provenance_attestation exceeds 16384 bytes")
+        statement = attestation.get("statement")
+        if (not isinstance(statement, dict) or attestation.get("algorithm") != "Ed25519"
+                or not isinstance(attestation.get("key_id"), str)
+                or not _SHA256.fullmatch(attestation["key_id"])
+                or not isinstance(attestation.get("public_key_b64"), str)
+                or not isinstance(attestation.get("signature_b64"), str)):
+            raise EvidenceValidationError("provenance_attestation has an invalid structure")
+        if (statement.get("content_sha256") != clean["content_sha256"]
+                or statement.get("source_uri") != clean["source_uri"]
+                or statement.get("acquired_at") != clean["acquired_at"]
+                or statement.get("fetcher_id") != clean["submitted_by"]
+                or statement.get("claim") != "platform_observed_fetch"):
+            raise EvidenceValidationError("provenance_attestation does not match the evidence source, digest, time, or fetcher")
+        try:
+            public_bytes = base64.b64decode(
+                attestation["public_key_b64"] + "=" * (-len(attestation["public_key_b64"]) % 4),
+                altchars=b"-_", validate=True,
+            )
+            signature = base64.b64decode(
+                attestation["signature_b64"] + "=" * (-len(attestation["signature_b64"]) % 4),
+                altchars=b"-_", validate=True,
+            )
+            if len(public_bytes) != 32 or len(signature) != 64:
+                raise ValueError("invalid Ed25519 key or signature length")
+            if hashlib.sha256(public_bytes).hexdigest() != attestation["key_id"]:
+                raise ValueError("attestation key fingerprint mismatch")
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+            canonical_statement = json.dumps(
+                statement, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+            ).encode("utf-8")
+            Ed25519PublicKey.from_public_bytes(public_bytes).verify(signature, canonical_statement)
+        except Exception as exc:
+            raise EvidenceValidationError("provenance_attestation signature is invalid") from exc
+        clean["provenance_attestation"] = json.loads(encoded_attestation)
     return clean
 
 

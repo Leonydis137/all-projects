@@ -201,3 +201,42 @@ def test_evidence_validation_rejects_oversized_idempotency_keys():
     record = {**_record("oversized-key"), "idempotency_key": "x" * 257}
     with pytest.raises(EvidenceValidationError, match="256 UTF-8 bytes"):
         _validate(record)
+
+def test_postgres_preserves_signed_attestation_in_hash_chain(postgres_dsn):
+    import base64
+    import hashlib
+    import json
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    marker = "attested-" + uuid4().hex
+    record = _record(marker)
+    statement = {
+        "version": "omnis-fetch-attestation-v1",
+        "claim": "platform_observed_fetch",
+        "source_uri": record["source_uri"],
+        "acquired_at": record["acquired_at"],
+        "content_sha256": record["content_sha256"],
+        "fetcher_id": marker,
+    }
+    key = Ed25519PrivateKey.generate()
+    public_bytes = key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    canonical = json.dumps(statement, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    record["provenance_attestation"] = {
+        "statement": statement,
+        "algorithm": "Ed25519",
+        "key_id": hashlib.sha256(public_bytes).hexdigest(),
+        "public_key_b64": base64.urlsafe_b64encode(public_bytes).decode("ascii").rstrip("="),
+        "signature_b64": base64.urlsafe_b64encode(key.sign(canonical)).decode("ascii").rstrip("="),
+    }
+
+    ledger = _ledger(postgres_dsn)
+    first = ledger.append(record)
+    second = ledger.append(_record(marker + "-next"))
+    listed = ledger.list(limit=10, before=second["sequence"] + 1)
+    attested = next(item for item in listed if item["sequence"] == first["sequence"])
+    assert attested["provenance_attestation"] == record["provenance_attestation"]
+    assert ledger.verify()["valid"] is True

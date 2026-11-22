@@ -109,7 +109,7 @@ class PostgresEvidenceLedger:
         latest_record = self._record(latest)
         latest_body = {key: latest_record[key] for key in (
             "source_uri", "content_sha256", "acquired_at", "acquisition_method",
-            "license", "submitted_by", "idempotency_key"
+            "license", "submitted_by", "idempotency_key", "provenance_attestation"
         ) if key in latest_record}
         expected = hashlib.sha256(
             _canonical({"record": latest_body, "previous_hash": latest["previous_hash"]})
@@ -121,7 +121,7 @@ class PostgresEvidenceLedger:
             previous_record = self._record(previous)
             previous_body = {key: previous_record[key] for key in (
                 "source_uri", "content_sha256", "acquired_at", "acquisition_method",
-                "license", "submitted_by", "idempotency_key"
+                "license", "submitted_by", "idempotency_key", "provenance_attestation"
             ) if key in previous_record}
             previous_expected = hashlib.sha256(
                 _canonical({"record": previous_body, "previous_hash": previous["previous_hash"]})
