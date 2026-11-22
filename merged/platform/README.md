@@ -31,7 +31,7 @@ uvicorn omnis.api:app --host 127.0.0.1 --port 8080
 
 Set `OMNIS_API_TOKEN` to protect API routes. Without `OMNIS_DATABASE_URL`, OMNIS uses
 the persistent SQLite database selected by `OMNIS_EVIDENCE_DB`. To use PostgreSQL,
-apply migrations 001 through 005 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
+apply migrations 001 through 007 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
 DSN for a dedicated runtime role with schema USAGE and SELECT/INSERT privileges only.
 Remote connections require certificate and hostname verification (`sslmode=verify-full`);
 configure the provider CA as the libpq root certificate. The runtime never runs schema
@@ -105,3 +105,49 @@ does not validate the source's claims, and does not establish the licence assert
 by the caller. The evidence record therefore continues to report
 `source_authenticity: unverified` / `not_established`. Pin the signing-key fingerprint
 out-of-band and manage key rotation as an explicit trust change.
+
+
+## Tenant identity foundation
+
+Migration `006_tenant_identity.sql` adds PostgreSQL tenants, principals, active
+memberships, role assignments, and revocable API credentials. Tenant credentials
+are high-entropy `omnis_live_...` tokens; only keyed HMAC-SHA256 digests are stored.
+Set `OMNIS_API_KEY_PEPPER` to a separate secret containing at least 32 characters.
+The authenticated `GET /v1/identity/me` probe and tenant evidence routes require both
+a tenant credential and an explicit `X-OMNIS-Tenant` UUID header. Tenant evidence
+operations are role-gated, row-level secured, and audited against the authenticated
+principal ID.
+
+This is a staged rollout: tenant credentials are accepted by the identity probe and
+the dedicated `/v1/tenant/evidence` endpoints only. The legacy global evidence,
+governance, and other business endpoints continue to use `OMNIS_API_TOKEN`; they are
+not tenant-isolated. Do not expose tenant credentials to those routes until their
+storage, idempotency, authorization, and audit queries enforce tenant boundaries. The migration creates no users,
+tenants, or credentials automatically; provision them through a separate trusted
+database-owner process. The runtime database role receives SELECT-only access to
+identity tables.
+
+
+To create the first tenant and owner credential, use the separate owner-only
+`OMNIS_PROVISIONING_DATABASE_URL` with `python -m omnis.provision_identity`.
+The command prints the generated API token once after commit; store it in a secret
+manager immediately. Never use the provisioning DSN as the runtime database URL.
+
+
+## Tenant-scoped evidence API
+
+After applying migrations 006 and 007, tenant credentials can use:
+
+- `POST /v1/tenant/evidence` — append evidence as the authenticated principal.
+- `GET /v1/tenant/evidence` — list only the selected tenant's evidence.
+- `GET /v1/tenant/evidence/verify` — verify that tenant's hash chain.
+
+Send the tenant UUID in `X-OMNIS-Tenant`. The role must include
+`evidence:write` for append or `evidence:read` for list/verify. The API assigns
+`submitted_by` from the authenticated principal; clients cannot spoof the actor.
+The table has forced PostgreSQL row-level security, tenant-specific idempotency
+keys, independent hash chains, and append-only triggers. Each operation records
+the authenticated principal as the audit actor.
+
+The existing global `/v1/evidence` routes remain on the legacy shared-token path.
+They are not transparently migrated or exposed through tenant credentials.

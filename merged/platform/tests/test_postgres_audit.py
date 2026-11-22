@@ -34,11 +34,14 @@ def test_postgres_audit_append_list_verify(postgres_audit_dsn):
     log = PostgresAuditLog(postgres_audit_dsn, actor="integration-test")
     first = log.record("test.created", {"marker": marker, "count": 1, "large_number": 1e20})
     second = log.record("test.updated", {"marker": marker, "count": 2})
+    third = log.record("identity.access", {"marker": marker}, actor="principal-123")
     assert second["prev"] == first["hash"]
     assert second["actor"] == "integration-test"
+    assert third["actor"] == "principal-123"
     listed = log.list(limit=10)
     assert any(item["hash"] == first["hash"] for item in listed)
     assert any(item["hash"] == second["hash"] for item in listed)
+    assert any(item["hash"] == third["hash"] and item["actor"] == "principal-123" for item in listed)
     assert log.verify() is True
 
 

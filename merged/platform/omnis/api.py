@@ -9,6 +9,7 @@ from typing import Any, Optional
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from . import __version__, assistant, catalog, config, governance, inventory, mathops, sources, stats
@@ -17,8 +18,10 @@ from .postgres_audit import AuditIntegrityError, PostgresAuditLog
 from .decision import Rule, default_engine
 from .evidence import EvidenceLedger, EvidenceValidationError
 from .postgres_evidence import EvidenceIntegrityError, PostgresEvidenceLedger
+from .postgres_tenant_evidence import PostgresTenantEvidenceLedger
 from .protocols import AEON, Context
 from .recommend import Recommender
+from .identity import IdentityUnavailable, InvalidCredential, Principal, authenticate_api_key
 from .source_fetch import (
     SourceConfigurationError,
     SourcePolicyError,
@@ -35,6 +38,7 @@ audit = (PostgresAuditLog(config.DATABASE_URL, actor=os.environ.get("OMNIS_AUDIT
          if config.DATABASE_URL else memory_audit)
 evidence = (PostgresEvidenceLedger(config.DATABASE_URL, audit_log=audit) if config.DATABASE_URL else
             EvidenceLedger(os.environ.get("OMNIS_EVIDENCE_DB", str(config.PLATFORM_DIR / "var" / "evidence.sqlite3"))))
+tenant_evidence = PostgresTenantEvidenceLedger(config.DATABASE_URL) if config.DATABASE_URL else None
 STATIC = Path(__file__).parent / "static"
 _HEALTH_CACHE_TTL_SECONDS = 2.0
 _health_lock = threading.Lock()
@@ -53,9 +57,37 @@ async def audit_api_requests(request: Request, call_next):
     if not path.startswith("/v1/") or (path == "/v1/audit" and request.method == "GET"):
         return await call_next(request)
 
+    # Tenant credentials are accepted only by tenant-aware identity and evidence routes.
+    # All other resource stores remain behind the legacy single-tenant token.
+    principal = None
+    identity_error = None
+    tenant_auth_paths = {
+        "/v1/identity/me",
+        "/v1/tenant/evidence",
+        "/v1/tenant/evidence/verify",
+    }
+    if path in tenant_auth_paths:
+        authorization = request.headers.get("authorization", "")
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not token:
+            identity_error = InvalidCredential("missing or invalid bearer credential")
+        else:
+            try:
+                principal = await run_in_threadpool(authenticate_api_key, token, request.headers.get("x-omnis-tenant"))
+            except (InvalidCredential, IdentityUnavailable) as exc:
+                identity_error = exc
+        request.state.identity_principal = principal
+        request.state.identity_error = identity_error
+
     event = {"method": request.method, "path": path}
+    if principal is not None:
+        event["tenant_id"] = principal.tenant_id
+    actor = principal.principal_id if principal is not None else None
     try:
-        audit.record("http.request.started", event)
+        if actor:
+            audit.record("http.request.started", event, actor=actor)
+        else:
+            audit.record("http.request.started", event)
     except Exception:
         return JSONResponse(status_code=503, content={"detail": "audit_unavailable"})
 
@@ -63,31 +95,53 @@ async def audit_api_requests(request: Request, call_next):
         response = await call_next(request)
     except Exception as exc:
         try:
-            audit.record("http.request.failed", {**event, "error_type": type(exc).__name__})
+            if actor:
+                audit.record("http.request.failed", {**event, "error_type": type(exc).__name__}, actor=actor)
+            else:
+                audit.record("http.request.failed", {**event, "error_type": type(exc).__name__})
         except Exception:
             pass
         raise
 
     try:
-        audit.record("http.request.completed", {**event, "status_code": response.status_code})
+        if actor:
+            audit.record("http.request.completed", {**event, "status_code": response.status_code}, actor=actor)
+        else:
+            audit.record("http.request.completed", {**event, "status_code": response.status_code})
     except Exception:
         response.headers["X-OMNIS-Audit-Status"] = "incomplete"
     return response
 
 
 def auth(authorization: Optional[str] = Header(default=None)) -> None:
-    # Fail closed: an unset token must never turn protected routes public.
+    # Legacy shared-token authentication remains for existing single-tenant routes.
+    # Tenant credentials are intentionally not accepted here until those routes
+    # and their storage adapters enforce tenant isolation.
     if not config.API_TOKEN:
         raise HTTPException(503, "API authentication is not configured")
     if authorization != f"Bearer {config.API_TOKEN}":
         raise HTTPException(401, "missing or invalid bearer token")
 
 
-def gated(kind: str, attrs: Optional[dict] = None) -> dict:
+def tenant_identity(request: Request) -> Principal:
+    principal = getattr(request.state, "identity_principal", None)
+    error = getattr(request.state, "identity_error", None)
+    if isinstance(error, IdentityUnavailable):
+        raise HTTPException(503, str(error)) from error
+    if isinstance(error, InvalidCredential) or principal is None:
+        raise HTTPException(401, "missing or invalid tenant credential")
+    return principal
+
+
+def gated(kind: str, attrs: Optional[dict] = None, actor: Optional[str] = None) -> dict:
     """Run an action through the COVENANT gate and audit it."""
     action = governance.stamp({"type": kind, **(attrs or {})}, mission="PRIMARY_MISSION", auditable=True, data_provenance=True)
     verdict = governance.evaluate(action)
-    audit.record("govern", {"action": kind, "allowed": verdict["allowed"], "violations": verdict["violations"]})
+    payload = {"action": kind, "allowed": verdict["allowed"], "violations": verdict["violations"]}
+    if actor:
+        audit.record("govern", payload, actor=actor)
+    else:
+        audit.record("govern", payload)
     if not verdict["allowed"]:
         raise HTTPException(403, {"blocked_by": "covenant", "violations": verdict["violations"]})
     return verdict
@@ -168,6 +222,14 @@ class SourceFetchIn(BaseModel):
     source_uri: str = Field(min_length=1, max_length=2048)
     license: str = Field(default="unspecified", min_length=1, max_length=256)
 
+class TenantEvidenceIn(BaseModel):
+    source_uri: str
+    content_sha256: str
+    acquired_at: str
+    acquisition_method: str
+    license: str
+    idempotency_key: Optional[str] = None
+
 
 @app.get("/health")
 def health():
@@ -203,6 +265,71 @@ def health():
         if not healthy:
             return JSONResponse(status_code=503, content=payload)
         return payload
+
+
+@app.get("/v1/identity/me")
+def get_identity(principal: Principal = Depends(tenant_identity)) -> dict:
+    """Return the authenticated principal and permissions for the selected tenant."""
+    audit.record("identity.access", {"tenant_id": principal.tenant_id,
+                                      "principal_id": principal.principal_id},
+                 actor=principal.principal_id)
+    return {
+        "tenant_id": principal.tenant_id,
+        "principal_id": principal.principal_id,
+        "email": principal.email,
+        "display_name": principal.display_name,
+        "role": principal.role,
+        "permissions": sorted(principal.permissions),
+        "credential_prefix": principal.credential_prefix,
+    }
+
+
+@app.post("/v1/tenant/evidence")
+def append_tenant_evidence(
+    body: TenantEvidenceIn,
+    principal: Principal = Depends(tenant_identity),
+) -> dict:
+    if not principal.allows("evidence:write"):
+        raise HTTPException(403, "tenant role lacks evidence:write")
+    if tenant_evidence is None:
+        raise HTTPException(503, "PostgreSQL tenant evidence is not configured")
+    try:
+        gated("tenant.evidence.append", {"tenant_id": principal.tenant_id}, actor=principal.principal_id)
+        stored = tenant_evidence.append_with_audit(
+            body.model_dump(exclude_none=True), principal.tenant_id, principal.principal_id, audit
+        )
+        return {"record": stored}
+    except EvidenceIntegrityError:
+        return JSONResponse(status_code=503, content={"detail": "tenant_evidence_integrity_error"})
+    except EvidenceValidationError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/v1/tenant/evidence")
+def list_tenant_evidence(
+    limit: int = 100,
+    before: int | None = None,
+    principal: Principal = Depends(tenant_identity),
+) -> dict:
+    if not principal.allows("evidence:read"):
+        raise HTTPException(403, "tenant role lacks evidence:read")
+    if tenant_evidence is None:
+        raise HTTPException(503, "PostgreSQL tenant evidence is not configured")
+    try:
+        return {"records": tenant_evidence.list(principal.tenant_id, limit=limit, before=before)}
+    except EvidenceIntegrityError:
+        return JSONResponse(status_code=503, content={"detail": "tenant_evidence_integrity_error"})
+    except EvidenceValidationError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/v1/tenant/evidence/verify")
+def verify_tenant_evidence(principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("evidence:read"):
+        raise HTTPException(403, "tenant role lacks evidence:read")
+    if tenant_evidence is None:
+        raise HTTPException(503, "PostgreSQL tenant evidence is not configured")
+    return tenant_evidence.verify(principal.tenant_id)
 
 
 @app.get("/v1/catalog", dependencies=[Depends(auth)])

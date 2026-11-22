@@ -7,6 +7,8 @@ Apply migrations in numeric order using a database-owner or migration role befor
 3. `003_audit_event_canonical_payload.sql` adds the canonical audit-event body required by the PostgreSQL audit adapter.
 4. `004_evidence_idempotency.sql` adds an optional unique client idempotency key and builds its unique index concurrently so normal evidence writes can continue.
 5. `005_case_insensitive_source_uri.sql` atomically replaces the original case-sensitive HTTP(S) constraint; it installs the new check as NOT VALID and validates it without blocking ordinary writes.
+6. `006_tenant_identity.sql` creates tenants, principals, memberships, and HMAC-digested API credentials.
+7. `007_tenant_evidence.sql` creates a per-tenant append-only evidence ledger with forced row-level security, per-tenant idempotency, and tenant-local hash chains.
 
 Example:
 
@@ -16,6 +18,8 @@ psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 002_ledger_immutability.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 003_audit_event_canonical_payload.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 004_evidence_idempotency.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 005_case_insensitive_source_uri.sql
+psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 006_tenant_identity.sql
+psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 007_tenant_evidence.sql
 ```
 
 Migration 004 intentionally contains `CREATE INDEX CONCURRENTLY` and must not be wrapped in an explicit transaction. If an interrupted concurrent index build leaves an invalid index, inspect `pg_index.indisvalid`, drop that invalid index with `DROP INDEX CONCURRENTLY omnis.evidence_idempotency_key_uq`, and rerun migration 004.
@@ -40,4 +44,29 @@ Do not grant table ownership, UPDATE, DELETE, TRUNCATE, schema CREATE, or migrat
 
 Migration 003 leaves `event_json` nullable to permit schema rollout over databases with existing audit rows. Existing rows without canonical bodies deliberately fail closed during full audit verification; reconcile or migrate those records before enabling PostgreSQL audit mode.
 
+After migration 006, grant the runtime role read-only access to identity records: `GRANT SELECT ON omnis.tenant, omnis.principal, omnis.tenant_membership, omnis.api_credential TO omnis_app;`. After migration 007, grant `SELECT, INSERT` on `omnis.tenant_evidence` and `USAGE, SELECT` on its identity sequence (`omnis.tenant_evidence_sequence_seq`) to the runtime role, for example: `GRANT SELECT, INSERT ON omnis.tenant_evidence TO omnis_app; GRANT USAGE, SELECT ON SEQUENCE omnis.tenant_evidence_sequence_seq TO omnis_app;`. Do not grant UPDATE, DELETE, TRUNCATE, or ownership. The tenant evidence table uses forced RLS; each application transaction sets the trusted tenant context with `set_config('omnis.tenant_id', tenant_uuid, true)`. The application role must not have BYPASSRLS. Tenant credentials may access only `/v1/identity/me` and the tenant-scoped `/v1/tenant/evidence` routes; other business routes still use the legacy shared token.
+
 The application uses a lightweight latest-event audit health probe. Full-chain integrity verification remains available through the audit verification operation and should be run as a deliberate integrity check rather than on every load-balancer probe. Hash chains do not prove source authenticity or actor identity, and cannot detect deletion of a final suffix without an independently retained checkpoint.
+
+
+## Initial tenant provisioning
+
+Use a separate database-owner connection for provisioning; do not give these privileges
+to the runtime role. Configure `OMNIS_PROVISIONING_DATABASE_URL` and the same
+`OMNIS_API_KEY_PEPPER` used by the runtime, then run:
+
+```sh
+cd merged/platform
+python -m omnis.provision_identity \
+  --slug example-tenant \
+  --tenant-name "Example Tenant" \
+  --email owner@example.com \
+  --display-name "Tenant Owner"
+```
+
+The command creates a tenant, its initial owner principal and membership, and one
+API credential in a single transaction. It prints the raw bearer token once after
+commit; copy it directly into a secret manager. The database stores only its keyed
+digest. If the command fails, it does not print the token. The provisioning DSN
+must use a separate owner/provisioning role and must never be configured as the
+application's `OMNIS_DATABASE_URL`.

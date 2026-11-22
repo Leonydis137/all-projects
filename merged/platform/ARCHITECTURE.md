@@ -40,3 +40,24 @@ Clients cannot override the three evidence fields.
 - **UUMA** (mining framework): catalogued only; no mining is started by the platform.
 - Heavy standalone apps (Site Mirror, Vantage, Quantum Flow OS): need their own build/runtime; they are listed with their stack and size rather than embedded.
 - Known broken sources found by the analyzer: `services/autonomous-ai` (3 files with syntax errors) and `research/circuit-lower-bounds` (1) - see `GET /v1/inventory`.
+
+
+## Tenant identity rollout boundary
+
+PostgreSQL migration 006 introduces tenant, principal, membership, and API
+credential records. `GET /v1/identity/me` authenticates a tenant-specific credential against an explicit
+tenant header and reports the assigned role permissions. The dedicated tenant
+evidence routes use a separate forced-RLS table, per-tenant idempotency, and
+principal-attributed audit events.
+
+Tenant credentials are intentionally not accepted by the other existing business
+endpoints yet. Those endpoints still use the legacy shared token because their
+stores have not completed tenant-level row isolation. Enabling tenant credentials
+across those routes before scoping every read, write, idempotency key, and audit
+query would create a cross-tenant data exposure risk.
+
+
+Tenant evidence uses a separate PostgreSQL table and adapter. It has forced row-level
+security, per-tenant idempotency, tenant-local hash chains, and principal-attributed
+audit events. The original global evidence ledger remains separate for legacy
+single-tenant callers; no historical evidence is silently assigned to a tenant.

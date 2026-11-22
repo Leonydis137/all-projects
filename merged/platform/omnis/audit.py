@@ -11,10 +11,14 @@ class AuditLog:
         self._lock = threading.Lock()
         self.entries: list[dict] = []
 
-    def record(self, kind: str, payload: dict) -> dict:
+    def record(self, kind: str, payload: dict, actor: str | None = None) -> dict:
         with self._lock:
             prev = self.entries[-1]["hash"] if self.entries else "0" * 64
             body = {"i": len(self.entries), "ts": time.time(), "kind": kind, "payload": payload, "prev": prev}
+            if actor is not None:
+                if not isinstance(actor, str) or not actor.strip():
+                    raise ValueError("audit actor must be a non-empty string")
+                body["actor"] = actor.strip()
             body["hash"] = hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
             self.entries.append(body)
             return body
