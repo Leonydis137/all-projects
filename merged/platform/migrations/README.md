@@ -6,6 +6,7 @@ Apply migrations in numeric order using a database-owner or migration role befor
 2. `002_ledger_immutability.sql` hardens hash formats, removes default PUBLIC privileges, and blocks UPDATE, DELETE, and TRUNCATE.
 3. `003_audit_event_canonical_payload.sql` adds the canonical audit-event body required by the PostgreSQL audit adapter.
 4. `004_evidence_idempotency.sql` adds an optional unique client idempotency key for retry-safe evidence submission.
+5. `005_case_insensitive_source_uri.sql` replaces the original case-sensitive HTTP(S) constraint on existing databases.
 
 Example:
 
@@ -14,9 +15,10 @@ psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 001_evidence_and_audit.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 002_ledger_immutability.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 003_audit_event_canonical_payload.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 004_evidence_idempotency.sql
+psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 005_case_insensitive_source_uri.sql
 ```
 
-Set `OMNIS_DATABASE_URL` only after all four migrations have completed. This switches both evidence and audit storage from their local fallback implementations to PostgreSQL. During a rolling deployment, drain old application instances before relying on the durable audit chain; older instances do not write to PostgreSQL.
+Set `OMNIS_DATABASE_URL` only after all five migrations have completed. This switches both evidence and audit storage from their local fallback implementations to PostgreSQL. During a rolling deployment, drain old application instances before relying on the durable audit chain; older instances do not write to PostgreSQL.
 
 ## Application-role provisioning
 
