@@ -152,7 +152,7 @@ def health():
                    "import_roots": sources.wire() or "already wired", "audit_chain_valid": audit_valid,
                    "evidence_ledger": evidence_status, "assistant_configured": bool(config.ANTHROPIC_API_KEY)}
         status_code = 200 if healthy else 503
-        _health_cache["checked_at"] = now
+        _health_cache["checked_at"] = time.monotonic()
         _health_cache["response"] = (status_code, payload)
         if not healthy:
             return JSONResponse(status_code=503, content=payload)
