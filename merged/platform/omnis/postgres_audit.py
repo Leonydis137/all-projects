@@ -209,6 +209,50 @@ class PostgresAuditLog:
             _LOG.exception("OMNIS audit health probe failed")
             return False
 
+    def snapshot(self, limit: int = 50) -> dict[str, Any]:
+        """Verify the full chain and return its tail from one database snapshot."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+            raise ValueError("limit must be an integer between 1 and 500")
+        checked = 0
+        previous_hash = _ZERO_HASH
+        try:
+            with self._connect(statement_timeout_ms=self.verify_timeout_ms) as db:
+                with db.cursor() as cur:
+                    cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                    cur.execute(
+                        """SELECT occurred_at, actor, event_type, payload, previous_hash, event_hash, event_json
+                           FROM omnis.audit_event ORDER BY sequence"""
+                    )
+                    rows = cur.fetchall()
+            decoded = []
+            for row in rows:
+                try:
+                    event = self._decode(row)
+                except Exception:
+                    return {"verification": {"valid": False, "reason": "malformed_event",
+                                             "failed_index": checked}, "entries": []}
+                if event["i"] != checked or event["prev"] != previous_hash:
+                    return {"verification": {"valid": False, "reason": "chain_mismatch",
+                                             "failed_index": checked}, "entries": []}
+                expected = hashlib.sha256(_canonical(event)).hexdigest()
+                if row["event_hash"] != expected:
+                    return {"verification": {"valid": False, "reason": "hash_mismatch",
+                                             "failed_index": checked}, "entries": []}
+                event["hash"] = row["event_hash"]
+                decoded.append(event)
+                previous_hash = expected
+                checked += 1
+            return {
+                "verification": {"valid": True, "checked": checked, "head": previous_hash},
+                "entries": decoded[-limit:],
+            }
+        except Exception as exc:
+            _LOG.exception("OMNIS audit snapshot failed")
+            reason = "verification_timeout" if type(exc).__name__ in {"QueryCanceled", "QueryCanceledError"} else "storage_error"
+            return {"verification": {"valid": False, "reason": reason,
+                                     "error_type": type(exc).__name__, "checked": checked},
+                    "entries": []}
+
     def verify_status(self) -> dict[str, Any]:
         """Return a reasoned full-chain result; storage failures are not hash failures."""
         previous_hash = _ZERO_HASH
