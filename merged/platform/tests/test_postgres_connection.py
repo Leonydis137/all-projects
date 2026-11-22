@@ -16,6 +16,7 @@ def test_loopback_connections_may_use_plaintext(monkeypatch):
     assert _sslmode_for_params({"host": "localhost"}) == "disable"
     assert _sslmode_for_params({"host": "127.0.0.1", "hostaddr": "127.0.0.1"}) == "disable"
     assert _sslmode_for_params({"hostaddr": "127.0.0.1"}) == "disable"
+    assert _sslmode_for_params({"host": "[::1]"}) == "disable"
     assert _sslmode_for_params({}) == "disable"
 
 
