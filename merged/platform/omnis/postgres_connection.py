@@ -7,8 +7,14 @@ from typing import Any
 
 
 def _sslmode_for_params(params: dict[str, str]) -> str:
-    hosts = [item.strip().lower() for item in (params.get("host") or "").split(",") if item.strip()]
-    hostaddrs = [item.strip() for item in (params.get("hostaddr") or "").split(",") if item.strip()]
+    raw_host = params.get("host") or ""
+    raw_hostaddr = params.get("hostaddr")
+    if not raw_host and os.environ.get("PGHOST"):
+        raise ValueError("PostgreSQL host resolved from PGHOST is unsupported; specify host in OMNIS_DATABASE_URL")
+    if raw_hostaddr is None and os.environ.get("PGHOSTADDR"):
+        raw_hostaddr = os.environ["PGHOSTADDR"]
+    hosts = [item.strip().lower() for item in raw_host.split(",") if item.strip()]
+    hostaddrs = [item.strip() for item in (raw_hostaddr or "").split(",") if item.strip()]
     local_names = {"localhost"}
 
     def is_loopback(address: str) -> bool:
@@ -18,10 +24,9 @@ def _sslmode_for_params(params: dict[str, str]) -> str:
             return False
 
     if not hosts and not hostaddrs:
-        # libpq may silently resolve hostless DSNs through environment variables or
-        # service files. Refuse those ambiguous cases rather than guessing "local".
-        if params.get("service") or any(os.environ.get(name) for name in ("PGSERVICE", "PGHOST", "PGHOSTADDR")):
-            raise ValueError("hostless PostgreSQL DSNs with libpq service/environment overrides are unsupported")
+        # libpq may silently resolve hostless DSNs through service files.
+        if params.get("service") or os.environ.get("PGSERVICE"):
+            raise ValueError("hostless PostgreSQL DSNs with libpq service overrides are unsupported")
         return "disable"  # unambiguous libpq default local Unix socket
 
     addresses_are_local = all(is_loopback(address) for address in hostaddrs)
