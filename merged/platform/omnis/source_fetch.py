@@ -133,12 +133,12 @@ def _fetch_pinned(host: str, path: str, address: str, max_bytes: int) -> tuple[b
         if declared_length:
             try:
                 parsed_length = int(declared_length)
-                if parsed_length < 0:
-                    raise ValueError("negative Content-Length")
-                if parsed_length > max_bytes:
-                    raise SourcePolicyError("source response exceeds the configured size limit")
             except ValueError as exc:
                 raise SourceUnavailable("source returned an invalid Content-Length") from exc
+            if parsed_length < 0:
+                raise SourceUnavailable("source returned an invalid Content-Length")
+            if parsed_length > max_bytes:
+                raise SourcePolicyError("source response exceeds the configured size limit")
         content = response.read(max_bytes + 1)
         if len(content) > max_bytes:
             raise SourcePolicyError("source response exceeds the configured size limit")
