@@ -23,6 +23,12 @@ def test_remote_hostaddr_cannot_hide_behind_loopback_hostname():
         _sslmode_for_params({"host": "localhost", "hostaddr": "203.0.113.10"})
 
 
+def test_environment_hostaddr_cannot_hide_behind_loopback_hostname(monkeypatch):
+    monkeypatch.setenv("PGHOSTADDR", "203.0.113.10")
+    with pytest.raises(ValueError, match="loopback"):
+        _sslmode_for_params({"host": "localhost"})
+
+
 def test_remote_hostaddr_requires_a_verifiable_hostname():
     with pytest.raises(ValueError, match="hostname"):
         _sslmode_for_params({"hostaddr": "203.0.113.10"})
@@ -35,5 +41,11 @@ def test_hostless_libpq_environment_overrides_are_rejected(monkeypatch):
 
 
 def test_service_based_dsns_are_rejected_without_resolved_host():
-    with pytest.raises(ValueError, match="hostless"):
+    with pytest.raises(ValueError, match="service"):
         _sslmode_for_params({"service": "remote-db"})
+
+
+def test_service_environment_is_rejected_even_with_local_host(monkeypatch):
+    monkeypatch.setenv("PGSERVICE", "remote-db")
+    with pytest.raises(ValueError, match="service"):
+        _sslmode_for_params({"host": "localhost"})
