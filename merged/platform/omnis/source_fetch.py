@@ -196,7 +196,9 @@ def acquire_and_attest(source_uri: str, license_name: str, fetcher_id: str) -> t
         raise SourcePolicyError("declared licence must be a non-empty value of at most 256 characters")
     fetcher_id = fetcher_id.strip()
     license_name = license_name.strip()
+    key = _signing_key()
     host, path = _parse_source_uri(source_uri)
+    source_uri = f"https://{host}{path}"
     addresses = _resolve_public_ips(host)
     content, media_type = _fetch_pinned(host, path, addresses[0], MAX_SOURCE_BYTES)
     acquired_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -215,7 +217,6 @@ def acquire_and_attest(source_uri: str, license_name: str, fetcher_id: str) -> t
         "dns_addresses": addresses,
         "connected_ip": addresses[0],
     }
-    key = _signing_key()
     from cryptography.hazmat.primitives import serialization
     public_bytes = key.public_key().public_bytes(
         encoding=serialization.Encoding.Raw,
