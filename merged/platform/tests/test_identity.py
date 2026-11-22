@@ -66,7 +66,7 @@ def test_database_authentication_requires_matching_active_membership():
                 "email": "user@example.test",
                 "display_name": "Test User",
                 "role": "operator",
-                "token_prefix": TOKEN[:20],
+                "token_prefix": TOKEN[:32],
             }
             self.params = None
 
@@ -103,7 +103,7 @@ def test_database_authentication_requires_matching_active_membership():
     assert result.principal_id == principal
     assert result.tenant_id == tenant
     assert result.role == "operator"
-    assert connection.cur.params == (digest_api_key(TOKEN, PEPPER), tenant)
+    assert connection.cur.params == (digest_api_key(TOKEN, PEPPER), tenant, TOKEN[:32])
 
 
 def test_database_authentication_rejects_missing_membership():
