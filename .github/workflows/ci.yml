@@ -55,6 +55,20 @@ jobs:
       - run: bash merged/sources/scripts/projects.sh test ${{ matrix.path }}
   platform:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: omnis_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d omnis_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -77,4 +91,5 @@ jobs:
           PYTHONPATH: merged/platform
           OMNIS_API_TOKEN: ci-test-token
           OMNIS_EVIDENCE_DB: ${{ runner.temp }}/omnis-evidence.sqlite3
+          OMNIS_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/omnis_test
         run: python -m pytest -vv --tb=short merged/platform/tests
