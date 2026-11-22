@@ -24,8 +24,8 @@ class AuditLog:
             prev = "0" * 64
             for index, entry in enumerate(self.entries):
                 body = {key: value for key, value in entry.items() if key != "hash"}
-                if (body.get("i") != index or body["prev"] != prev or
-                        hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest() != entry["hash"]):
+                if (body.get("i") != index or body.get("prev") != prev or
+                        hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest() != entry.get("hash")):
                     return False
                 prev = entry["hash"]
             return True
