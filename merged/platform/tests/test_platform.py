@@ -131,7 +131,7 @@ def test_audit_endpoint_returns_snapshot_storage_failure_without_listing(monkeyp
 
     monkeypatch.setattr(api, "audit", UnavailableAudit())
     response = c.get("/v1/audit")
-    assert response.status_code == 200
+    assert response.status_code == 503
     assert response.json()["verification"]["reason"] == "storage_error"
     assert response.json()["entries"] == []
 
@@ -168,7 +168,7 @@ def test_audit_endpoint_preserves_specific_integrity_failure(monkeypatch):
 
     monkeypatch.setattr(api, "audit", CorruptAudit())
     response = c.get("/v1/audit")
-    assert response.status_code == 200
+    assert response.status_code == 503
     assert response.json()["verification"] == {
         "valid": False, "reason": "malformed_event", "failed_index": 7
     }
