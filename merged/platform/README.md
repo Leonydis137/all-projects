@@ -125,3 +125,9 @@ and audit queries enforce tenant boundaries. The migration creates no users,
 tenants, or credentials automatically; provision them through a separate trusted
 database-owner process. The runtime database role receives SELECT-only access to
 identity tables.
+
+
+To create the first tenant and owner credential, use the separate owner-only
+`OMNIS_PROVISIONING_DATABASE_URL` with `python -m omnis.provision_identity`.
+The command prints the generated API token once after commit; store it in a secret
+manager immediately. Never use the provisioning DSN as the runtime database URL.
