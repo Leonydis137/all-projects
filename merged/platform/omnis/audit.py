@@ -21,12 +21,19 @@ class AuditLog:
 
     def verify(self) -> bool:
         prev = "0" * 64
-        for e in self.entries:
-            b = {k: v for k, v in e.items() if k != "hash"}
-            if b["prev"] != prev or hashlib.sha256(json.dumps(b, sort_keys=True, default=str).encode()).hexdigest() != e["hash"]:
+        for entry in self.entries:
+            body = {key: value for key, value in entry.items() if key != "hash"}
+            if (body["prev"] != prev or
+                    hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest() != entry["hash"]):
                 return False
-            prev = e["hash"]
+            prev = entry["hash"]
         return True
+
+    def list(self, limit: int = 50) -> list[dict]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+            raise ValueError("limit must be an integer between 1 and 500")
+        with self._lock:
+            return [dict(entry) for entry in self.entries[-limit:]]
 
 
 audit = AuditLog()
