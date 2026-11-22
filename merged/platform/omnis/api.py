@@ -159,8 +159,8 @@ class EvidenceIn(BaseModel):
 
 
 class SourceFetchIn(BaseModel):
-    source_uri: str
-    license: str = "unspecified"
+    source_uri: str = Field(min_length=1, max_length=2048)
+    license: str = Field(default="unspecified", min_length=1, max_length=256)
 
 
 @app.get("/health")
@@ -325,8 +325,8 @@ def fetch_source(body: SourceFetchIn) -> dict:
     """Fetch an allowlisted HTTPS source and persist its signed fetch observation."""
     fetcher_id = os.environ.get("OMNIS_SOURCE_FETCHER_ID", "omnis-source-fetcher")
     try:
+        gated("source.fetch")
         record, result = acquire_and_attest(body.source_uri, body.license, fetcher_id)
-        gated("source.fetch", {"host": record["provenance_attestation"]["statement"]["source_uri"].split("/", 3)[2]})
         if config.DATABASE_URL and hasattr(evidence, "append_with_audit"):
             stored = evidence.append_with_audit(record, audit)
         else:
