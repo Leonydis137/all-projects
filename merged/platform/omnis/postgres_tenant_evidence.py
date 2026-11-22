@@ -48,6 +48,8 @@ class PostgresTenantEvidenceLedger:
     @staticmethod
     def _decode(row: dict[str, Any], tenant_id: str) -> dict[str, Any]:
         try:
+            if str(row["tenant_id"]) != tenant_id:
+                raise EvidenceIntegrityError("tenant evidence row escaped its tenant scope")
             record = PostgresEvidenceLedger._record(row)
             clean = _validate({key: value for key, value in record.items()
                                if key not in {"sequence", "previous_hash", "record_hash", "source_authenticity"}})
@@ -59,7 +61,7 @@ class PostgresTenantEvidenceLedger:
 
     def _head_hash(self, cur, tenant_id: str) -> str:
         cur.execute(
-            """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
+            """SELECT tenant_id, sequence, source_uri, content_sha256, acquired_at, acquisition_method,
                       declared_license, submitted_by, idempotency_key, record_json,
                       previous_hash, record_hash
                FROM omnis.tenant_evidence
@@ -125,6 +127,7 @@ class PostgresTenantEvidenceLedger:
                     )
                     existing = cur.fetchone()
                     if existing:
+                        decoded_existing = self._decode(existing, tenant)
                         stored = existing["record_json"]
                         if isinstance(stored, str):
                             stored = json.loads(stored)
