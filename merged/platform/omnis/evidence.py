@@ -89,29 +89,51 @@ class EvidenceLedger:
                 "record_hash": digest, "source_authenticity": "unverified"}
 
     def list(self, limit: int = 100, before: int | None = None) -> list[dict[str, Any]]:
-        if not 1 <= limit <= 500:
-            raise EvidenceValidationError("limit must be between 1 and 500")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+            raise EvidenceValidationError("limit must be an integer between 1 and 500")
+        if before is not None and (isinstance(before, bool) or not isinstance(before, int) or before < 1):
+            raise EvidenceValidationError("before must be a positive integer sequence cursor")
         with self._connect() as db:
             if before is None:
                 rows = db.execute("SELECT * FROM evidence ORDER BY sequence DESC LIMIT ?", (limit,)).fetchall()
             else:
                 rows = db.execute("SELECT * FROM evidence WHERE sequence < ? ORDER BY sequence DESC LIMIT ?",
                                   (before, limit)).fetchall()
-        return [{"sequence": row["sequence"], **json.loads(row["record_json"]),
-                 "previous_hash": row["previous_hash"], "record_hash": row["record_hash"],
-                 "source_authenticity": "unverified"} for row in reversed(rows)]
+        result = []
+        for row in reversed(rows):
+            try:
+                record = json.loads(row["record_json"])
+                if not isinstance(record, dict):
+                    raise ValueError("record is not an object")
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise EvidenceValidationError("stored evidence record is malformed") from exc
+            result.append({"sequence": row["sequence"], **record,
+                           "previous_hash": row["previous_hash"], "record_hash": row["record_hash"],
+                           "source_authenticity": "unverified"})
+        return result
 
     def verify(self) -> dict[str, Any]:
         previous_hash = "0" * 64
         checked = 0
-        with self._connect() as db:
-            rows = db.execute("SELECT * FROM evidence ORDER BY sequence").fetchall()
-        for row in rows:
-            record = json.loads(row["record_json"])
-            payload = {"record": record, "previous_hash": previous_hash}
-            expected = hashlib.sha256(_canonical(payload)).hexdigest()
-            if row["previous_hash"] != previous_hash or row["record_hash"] != expected:
-                return {"valid": False, "checked": checked, "failed_sequence": row["sequence"]}
-            previous_hash = expected
-            checked += 1
-        return {"valid": True, "checked": checked, "head": previous_hash}
+        try:
+            with self._connect() as db:
+                rows = db.execute("SELECT * FROM evidence ORDER BY sequence").fetchall()
+            for row in rows:
+                try:
+                    record = json.loads(row["record_json"])
+                    if not isinstance(record, dict):
+                        raise ValueError("record is not an object")
+                    payload = {"record": record, "previous_hash": previous_hash}
+                    expected = hashlib.sha256(_canonical(payload)).hexdigest()
+                    if row["previous_hash"] != previous_hash or row["record_hash"] != expected:
+                        return {"valid": False, "checked": checked,
+                                "failed_sequence": row["sequence"], "reason": "hash_mismatch"}
+                except (TypeError, ValueError, KeyError, sqlite3.Error):
+                    return {"valid": False, "checked": checked,
+                            "failed_sequence": row["sequence"], "reason": "malformed_record"}
+                previous_hash = expected
+                checked += 1
+            return {"valid": True, "checked": checked, "head": previous_hash}
+        except (OSError, sqlite3.Error):
+            # Do not expose database paths or low-level storage details in health output.
+            return {"valid": False, "checked": checked, "reason": "storage_error"}
