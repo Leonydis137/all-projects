@@ -165,6 +165,7 @@ def test_postgres_verification_detects_denormalized_column_mismatch(postgres_dsn
     import hashlib
     import json
     import psycopg
+    from datetime import datetime
     from omnis.evidence import _canonical, _validate
 
     clean = _validate(_record("column-mismatch-" + uuid4().hex))
@@ -180,7 +181,8 @@ def test_postgres_verification_detects_denormalized_column_mismatch(postgres_dsn
                 submitted_by, record_json, previous_hash, record_hash, idempotency_key)
                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, NULL)""",
             ("https://mismatched.example/uri", clean["content_sha256"],
-             clean["acquired_at"], clean["acquisition_method"], clean["license"],
+             datetime.fromisoformat(clean["acquired_at"].replace("Z", "+00:00")),
+             clean["acquisition_method"], clean["license"],
              clean["submitted_by"], json.dumps(clean), previous_hash, digest),
         )
     result = _ledger(postgres_dsn).verify()
