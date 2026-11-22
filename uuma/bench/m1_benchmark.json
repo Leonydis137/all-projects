@@ -1,0 +1,126 @@
+{
+  "reproducibility": {
+    "python_version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+    "platform": "Linux-6.18.44-fc-v37-x86_64-with-glibc2.39",
+    "processor": "x86_64",
+    "cpu_count": 1,
+    "warmup_iterations": 20,
+    "iterations_per_phase_per_run": 200,
+    "independent_runs": 5,
+    "peak_rss_kb": 18276,
+    "timestamp_utc": "2026-09-20T22:25:04Z"
+  },
+  "per_phase": {
+    "computational": {
+      "mean_seconds": 1.6319599998837474e-06,
+      "median_seconds": 1.620999995566308e-06,
+      "p95_seconds": 1.6860000044971457e-06,
+      "stdev_seconds": 5.185531105637762e-08,
+      "ops_per_sec": 612760.1167131761
+    },
+    "memory_hard_simulated": {
+      "mean_seconds": 0.0015105820650000367,
+      "median_seconds": 0.0015094365000081211,
+      "p95_seconds": 0.00170874799999865,
+      "stdev_seconds": 0.0001329353640064234,
+      "ops_per_sec": 661.9964735249096
+    },
+    "cpu_friendly_simulated": {
+      "mean_seconds": 1.2272185000057334e-05,
+      "median_seconds": 1.203050000242456e-05,
+      "p95_seconds": 1.3399000010849704e-05,
+      "stdev_seconds": 1.620825632085701e-06,
+      "ops_per_sec": 81485.08191453504
+    },
+    "mixing_simulated": {
+      "mean_seconds": 0.00011492215999965083,
+      "median_seconds": 0.00011333799999846406,
+      "p95_seconds": 0.0001255139999898347,
+      "stdev_seconds": 4.598662279832968e-06,
+      "ops_per_sec": 8701.541982878136
+    },
+    "asic_resistance_simulated": {
+      "mean_seconds": 2.5460714999923085e-05,
+      "median_seconds": 2.4771500001463664e-05,
+      "p95_seconds": 2.8989000000478882e-05,
+      "stdev_seconds": 2.7500020279533125e-06,
+      "ops_per_sec": 39276.194718138155
+    }
+  },
+  "full_pipeline": {
+    "mean_seconds": 0.0016555827649996503,
+    "median_seconds": 0.001555850499997291,
+    "p95_seconds": 0.002040858000000867,
+    "stdev_seconds": 0.0001803493906838113,
+    "ops_per_sec": 604.0169184777732
+  },
+  "run_to_run_variance": {
+    "computational": {
+      "run_means_seconds": [
+        1.5648299993387127e-06,
+        1.6319599998837474e-06,
+        1.3899350002333221e-06,
+        1.4650699998242089e-06,
+        1.452259999297212e-06
+      ],
+      "stdev_of_run_means_seconds": 9.647097819280375e-08,
+      "relative_spread_pct": 16.126281037140195
+    },
+    "memory_hard_simulated": {
+      "run_means_seconds": [
+        0.0015275252949998475,
+        0.0015105820650000367,
+        0.0014686871949989922,
+        0.001534625389999391,
+        0.00144685046000113
+      ],
+      "stdev_of_run_means_seconds": 3.8230839241542124e-05,
+      "relative_spread_pct": 5.860828018420635
+    },
+    "cpu_friendly_simulated": {
+      "run_means_seconds": [
+        1.449210000032508e-05,
+        1.2272185000057334e-05,
+        1.2407615001137629e-05,
+        1.2392324999552784e-05,
+        1.2288694999469386e-05
+      ],
+      "stdev_of_run_means_seconds": 9.642435217446352e-07,
+      "relative_spread_pct": 17.38303432520311
+    },
+    "mixing_simulated": {
+      "run_means_seconds": [
+        0.00013668636500064224,
+        0.00011492215999965083,
+        0.00011608619000021748,
+        0.0001338468850000396,
+        0.00012406173500011163
+      ],
+      "stdev_of_run_means_seconds": 9.958224082415917e-06,
+      "relative_spread_pct": 17.394572393838338
+    },
+    "asic_resistance_simulated": {
+      "run_means_seconds": [
+        2.6538045000492616e-05,
+        2.5460714999923085e-05,
+        2.5687489999839386e-05,
+        2.665714000002595e-05,
+        2.531996000001868e-05
+      ],
+      "stdev_of_run_means_seconds": 6.224154502445493e-07,
+      "relative_spread_pct": 5.1563529709982685
+    },
+    "full_pipeline": {
+      "run_means_seconds": [
+        0.0018715846949999104,
+        0.0016555827649996503,
+        0.001570213009999364,
+        0.0016648974199998889,
+        0.0015945669449998689
+      ],
+      "stdev_of_run_means_seconds": 0.00011885758395315772,
+      "relative_spread_pct": 18.0314275872632
+    }
+  },
+  "note": "headline per_phase/full_pipeline are from the median-of-5 run by full-pipeline mean; run_to_run_variance reports the mean of each of the 5 independent runs so stability can be judged. cpu_count reflects this container's single vCPU: absolute throughput numbers do not generalize to multi-core hosts."
+}
