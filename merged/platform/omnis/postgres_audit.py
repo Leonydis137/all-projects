@@ -177,7 +177,8 @@ class PostgresAuditLog:
             _LOG.exception("OMNIS audit health probe failed")
             return False
 
-    def verify(self) -> bool:
+    def verify_status(self) -> dict[str, Any]:
+        """Return a reasoned full-chain result; storage failures are not hash failures."""
         previous_hash = _ZERO_HASH
         expected_index = 0
         try:
@@ -189,15 +190,26 @@ class PostgresAuditLog:
                     )
                     rows = cur.fetchall()
             for row in rows:
-                event = self._decode(row)
+                try:
+                    event = self._decode(row)
+                except Exception:
+                    return {"valid": False, "reason": "malformed_event",
+                            "failed_index": expected_index}
                 if event["i"] != expected_index or event["prev"] != previous_hash:
-                    return False
+                    return {"valid": False, "reason": "chain_mismatch",
+                            "failed_index": expected_index}
                 expected = hashlib.sha256(_canonical(event)).hexdigest()
                 if row["event_hash"] != expected:
-                    return False
+                    return {"valid": False, "reason": "hash_mismatch",
+                            "failed_index": expected_index}
                 previous_hash = expected
                 expected_index += 1
-            return True
-        except Exception:
+            return {"valid": True, "checked": expected_index, "head": previous_hash}
+        except Exception as exc:
             _LOG.exception("OMNIS audit-chain verification failed")
-            return False
+            reason = "verification_timeout" if type(exc).__name__ in {"QueryCanceled", "QueryCanceledError"} else "storage_error"
+            return {"valid": False, "reason": reason, "error_type": type(exc).__name__,
+                    "checked": expected_index}
+
+    def verify(self) -> bool:
+        return bool(self.verify_status()["valid"])
