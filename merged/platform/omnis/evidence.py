@@ -50,9 +50,10 @@ class EvidenceLedger:
     """SQLite-backed append-only hash chain; safe across process restarts."""
 
     def __init__(self, path: str | Path = DEFAULT_DB) -> None:
+        if str(path) == ":memory:":
+            raise ValueError("OMNIS evidence ledger requires a persistent file-backed SQLite database")
         self.path = Path(path)
-        if str(self.path) != ":memory:":
-            self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS evidence (
