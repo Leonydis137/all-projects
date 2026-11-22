@@ -113,15 +113,16 @@ Migration `006_tenant_identity.sql` adds PostgreSQL tenants, principals, active
 memberships, role assignments, and revocable API credentials. Tenant credentials
 are high-entropy `omnis_live_...` tokens; only keyed HMAC-SHA256 digests are stored.
 Set `OMNIS_API_KEY_PEPPER` to a separate secret containing at least 32 characters.
-The authenticated `GET /v1/identity/me` probe requires both a tenant credential and
-an explicit `X-OMNIS-Tenant` UUID header. Its audit events are attributed to the
-authenticated principal ID.
+The authenticated `GET /v1/identity/me` probe and tenant evidence routes require both
+a tenant credential and an explicit `X-OMNIS-Tenant` UUID header. Tenant evidence
+operations are role-gated, row-level secured, and audited against the authenticated
+principal ID.
 
-This is a staged rollout: tenant credentials are accepted only by the identity
-probe. Existing evidence, governance, and business endpoints continue to use the
-legacy `OMNIS_API_TOKEN` and are not yet tenant-isolated. Do not issue tenant
-credentials for general API use until evidence storage, idempotency, authorization,
-and audit queries enforce tenant boundaries. The migration creates no users,
+This is a staged rollout: tenant credentials are accepted by the identity probe and
+the dedicated `/v1/tenant/evidence` endpoints only. The legacy global evidence,
+governance, and other business endpoints continue to use `OMNIS_API_TOKEN`; they are
+not tenant-isolated. Do not expose tenant credentials to those routes until their
+storage, idempotency, authorization, and audit queries enforce tenant boundaries. The migration creates no users,
 tenants, or credentials automatically; provision them through a separate trusted
 database-owner process. The runtime database role receives SELECT-only access to
 identity tables.
