@@ -17,6 +17,7 @@ jobs:
           test -s merged/sources/projects.json
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json
+          import sys
           from pathlib import Path
 
           source = Path("merged/sources/projects.json")
@@ -33,7 +34,7 @@ jobs:
               raise SystemExit("No node/python projects found for CI matrix")
           matrix = {"include": selected}
           encoded = json.dumps(matrix, separators=(",", ":"))
-          print(f"Selected {len(selected)} projects; matrix payload {len(encoded)} bytes")
+          print(f"Selected {len(selected)} projects; matrix payload {len(encoded)} bytes", file=sys.stderr)
           print("matrix=" + encoded)
           PY
   test:
