@@ -36,7 +36,10 @@ def _validate(record: dict[str, Any]) -> dict[str, Any]:
         raise EvidenceValidationError("evidence fields must not contain NUL characters")
     if not _SHA256.fullmatch(record["content_sha256"]):
         raise EvidenceValidationError("content_sha256 must be a lowercase SHA-256 hex digest")
-    parsed = urlsplit(record["source_uri"])
+    try:
+        parsed = urlsplit(record["source_uri"])
+    except ValueError as exc:
+        raise EvidenceValidationError("source_uri must be a valid absolute HTTP(S) URI") from exc
     if parsed.scheme not in ("https", "http") or not parsed.netloc or parsed.username or parsed.password:
         raise EvidenceValidationError("source_uri must be an absolute HTTP(S) URI without embedded credentials")
     try:
