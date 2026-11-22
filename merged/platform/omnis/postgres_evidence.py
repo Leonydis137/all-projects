@@ -54,6 +54,7 @@ class PostgresEvidenceLedger:
             "acquisition_method": payload.get("acquisition_method"),
             "declared_license": payload.get("license"),
             "submitted_by": payload.get("submitted_by"),
+            "idempotency_key": payload.get("idempotency_key"),
         }
         for column, expected_value in expected_fields.items():
             actual = row[column]
@@ -96,7 +97,7 @@ class PostgresEvidenceLedger:
                 if clean.get("idempotency_key"):
                     cur.execute(
                         """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
-                                  declared_license, submitted_by, record_json, previous_hash, record_hash
+                                  declared_license, submitted_by, idempotency_key, record_json, previous_hash, record_hash
                            FROM omnis.evidence WHERE idempotency_key = %s""",
                         (clean["idempotency_key"],),
                     )
@@ -152,7 +153,7 @@ class PostgresEvidenceLedger:
                 if before is None:
                     cur.execute(
                         """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
-                                  declared_license, submitted_by, record_json, previous_hash, record_hash, source_authenticity
+                                  declared_license, submitted_by, idempotency_key, record_json, previous_hash, record_hash, source_authenticity
                            FROM omnis.evidence ORDER BY sequence DESC LIMIT %s""", (limit,)
                     )
                 else:
