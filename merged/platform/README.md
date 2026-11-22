@@ -14,6 +14,9 @@ A catalogue entry is not a claim that a project is fully integrated or productio
 - Statistical and mathematical endpoints.
 - Optional external-model assistant (requires an explicitly configured provider key).
 - Append-only evidence ledger with hash-chain verification.
+- Tamper-evident audit events for the lifecycle of all `/v1/` requests except the
+  read-only `/v1/audit` endpoint. The request log records method, path, and response
+  status only; request bodies, credentials, and query strings are not copied into it.
 - SQLite remains the default evidence store; PostgreSQL is selected only when
   `OMNIS_DATABASE_URL` is explicitly configured.
 
@@ -47,6 +50,14 @@ Both evidence and audit events use PostgreSQL when `OMNIS_DATABASE_URL` is confi
 The evidence insert and its corresponding audit event share one transaction, so an
 audit failure rolls back the evidence insert. Optional client idempotency keys make
 evidence retries safe; reusing a key with different content is rejected.
+
+For every `/v1/` request except the read-only audit endpoint, OMNIS writes a
+`http.request.started` event before route dispatch. If that write fails, the request
+is rejected with HTTP 503 before the route executes. A completion event records the
+response status. If completion logging fails after an action has run, the response is
+preserved and marked with `X-OMNIS-Audit-Status: incomplete`; clients must not assume
+that the operation was rolled back. Authentication failures are included in the request
+lifecycle log. Request bodies and bearer tokens are never included.
 
 Health probes validate the latest ledger entries without scanning full history.
 Use the explicit evidence and audit verification operations for full-chain checks.

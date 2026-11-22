@@ -199,4 +199,46 @@ def test_sqlite_idempotent_evidence_retry_does_not_duplicate_audit(monkeypatch):
         "idempotency_key": "retry-key",
     })
     assert response.status_code == 200
-    assert calls == []
+    assert not any(kind == "evidence.append" for kind, _ in calls)
+
+
+def test_every_api_route_is_audited_even_without_covenant_gate():
+    from omnis import api
+
+    response = c.post("/v1/stats/posterior", json={"bayes_factor": 2.0})
+    assert response.status_code == 200
+    entries = api.audit.list(limit=500)
+    recent = entries[-2:]
+    assert [entry["kind"] for entry in recent] == [
+        "http.request.started", "http.request.completed"
+    ]
+    assert recent[0]["payload"] == {"method": "POST", "path": "/v1/stats/posterior"}
+    assert recent[1]["payload"]["status_code"] == 200
+
+
+def test_audit_unavailable_blocks_api_dispatch(monkeypatch):
+    from omnis import api
+
+    class UnavailableAudit:
+        def record(self, kind, payload):
+            raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(api, "audit", UnavailableAudit())
+    response = c.post("/v1/math/gcd-lcm", json={"numbers": [12, 18]})
+    assert response.status_code == 503
+    assert response.json()["detail"] == "audit_unavailable"
+
+
+def test_completion_audit_failure_is_explicit_without_replaying_action(monkeypatch):
+    from omnis import api
+
+    class CompletionFailureAudit:
+        def record(self, kind, payload):
+            if kind == "http.request.completed":
+                raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(api, "audit", CompletionFailureAudit())
+    response = c.post("/v1/math/gcd-lcm", json={"numbers": [12, 18]})
+    assert response.status_code == 200
+    assert response.json() == {"gcd": 6, "lcm": 36}
+    assert response.headers["X-OMNIS-Audit-Status"] == "incomplete"

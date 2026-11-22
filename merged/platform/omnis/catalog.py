@@ -7,7 +7,8 @@ from .config import CATALOG
 
 # project path -> how the platform exposes its features
 FEATURES = {
-    "services/covenant": ["POST /v1/govern", "governed gate on every /v1 call", "tamper-evident audit (/v1/audit)"],
+    "services/covenant": ["POST /v1/govern", "COVENANT gate on selected decision/recommendation/protocol/assistant actions",
+                          "tamper-evident request and decision audit (/v1/audit)"],
     "services/autonomous-ai": ["POST /v1/decide", "POST /v1/recommend"],
     "services/aeon-engine": ["POST /v1/protocols/respond", "POST /v1/protocols/feedback"],
     "tools/self-improving-code-analyzer": ["POST /v1/math/gcd-lcm"],

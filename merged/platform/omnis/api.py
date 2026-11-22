@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -32,6 +32,40 @@ STATIC = Path(__file__).parent / "static"
 _HEALTH_CACHE_TTL_SECONDS = 2.0
 _health_lock = threading.Lock()
 _health_cache: dict[str, Any] = {"checked_at": 0.0, "response": None}
+
+
+@app.middleware("http")
+async def audit_api_requests(request: Request, call_next):
+    """Persist a request-start event before dispatch; never run an API action unaudited.
+
+    The audit read endpoint is exempt to avoid making a read of the ledger mutate it.
+    If the completion event cannot be written, the completed action is not retried;
+    the response carries an explicit incomplete-audit header instead.
+    """
+    path = request.url.path
+    if not path.startswith("/v1/") or (path == "/v1/audit" and request.method == "GET"):
+        return await call_next(request)
+
+    event = {"method": request.method, "path": path}
+    try:
+        audit.record("http.request.started", event)
+    except Exception:
+        return JSONResponse(status_code=503, content={"detail": "audit_unavailable"})
+
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        try:
+            audit.record("http.request.failed", {**event, "error_type": type(exc).__name__})
+        except Exception:
+            pass
+        raise
+
+    try:
+        audit.record("http.request.completed", {**event, "status_code": response.status_code})
+    except Exception:
+        response.headers["X-OMNIS-Audit-Status"] = "incomplete"
+    return response
 
 
 def auth(authorization: Optional[str] = Header(default=None)) -> None:

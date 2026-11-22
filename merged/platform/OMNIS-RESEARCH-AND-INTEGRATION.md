@@ -23,19 +23,15 @@ OMNIS is the integration layer for the source projects in this repository. The m
 6. **Vantage-ARS / Site Mirror / commerce and static sites**: business and web capabilities remain independently deployable services with explicit data ownership.
 7. **Synapse OS and mobile clients**: clients consume authenticated APIs; secrets never ship in mobile binaries.
 
-## Evidence ledger delivered in this milestone
+## Evidence and audit milestones delivered
 
-The SQLite ledger stores source URI, SHA-256 content digest, timezone-aware acquisition timestamp, acquisition method, declared licence, and submitter. Records are append-only and linked by a SHA-256 hash chain. The verification endpoint checks ledger integrity only. Source authenticity remains explicitly unverified until an independent fetcher, signature, or trusted connector validates it.
+- Append-only evidence records retain source URI, SHA-256 content digest, timezone-aware acquisition timestamp, acquisition method, declared licence, and submitter. SQLite remains the local default; PostgreSQL is selected explicitly through `OMNIS_DATABASE_URL`.
+- PostgreSQL evidence writes and their audit events commit in one transaction. PostgreSQL audit and evidence ledgers are hash chained, append-only, and explicitly verifiable.
+- Every `/v1/` request except the read-only `GET /v1/audit` endpoint now receives a request-start audit event before route dispatch and a completion event with the response status. A failed start write blocks route execution; a failed completion write marks the response `X-OMNIS-Audit-Status: incomplete`.
+- Request lifecycle events record method, path, and status only; they do not copy request bodies, query strings, or bearer tokens into the audit trail.
+- Hash integrity verifies retained records; it does not prove source authenticity or actor identity, and cannot detect deletion of a final suffix without an independently retained checkpoint.
 
-Environment:
-- `OMNIS_EVIDENCE_DB`: optional absolute path for the evidence database.
-- Default runtime path: `merged/platform/var/evidence.sqlite3`.
-
-Endpoints (protected by `OMNIS_API_TOKEN` when configured):
-- `POST /v1/evidence`: append a source evidence record.
-- `GET /v1/evidence`: list records.
-- `GET /v1/evidence/verify`: verify the hash chain.
-- `GET /health`: reports ledger integrity separately from source authenticity.
+The evidence verification endpoint checks ledger integrity only. Source authenticity remains explicitly unverified until an independent fetcher, signature, or trusted connector validates it.
 
 ## Research quality gate
 
@@ -51,8 +47,7 @@ No claim of a P-vs-NP resolution, new complexity lower bound, or Nobel-level dis
 
 ## Next integration stages
 
-- Replace process-local audit storage with durable transactional storage.
-- Add independent source acquisition connectors and signed provenance attestations.
+- Add independent source acquisition connectors with strict outbound-network policy and signed provenance attestations; never label a platform signature as independent source authenticity.
 - Add PostgreSQL-backed identity, tenancy, permissions, and event processing.
 - Split long-running research and agent workloads into isolated workers.
 - Integrate each source project only after its own build, tests, licence, secrets, and runtime contract are audited.

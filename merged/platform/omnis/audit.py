@@ -1,5 +1,5 @@
 # Author: Juan-Louw Greyling <juanlouw.greyling@gmail.com>
-"""Tamper-evident audit trail (hash chain) for every governed call."""
+"""Tamper-evident audit trail for API request lifecycle and governed decisions."""
 import hashlib
 import json
 import threading
