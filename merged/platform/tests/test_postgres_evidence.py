@@ -215,7 +215,9 @@ def test_postgres_preserves_signed_attestation_in_hash_chain(postgres_dsn):
         "version": "omnis-fetch-attestation-v1",
         "claim": "platform_observed_fetch",
         "source_uri": record["source_uri"],
+        "acquired_at": record["acquired_at"],
         "content_sha256": record["content_sha256"],
+        "fetcher_id": marker,
     }
     key = Ed25519PrivateKey.generate()
     public_bytes = key.public_key().public_bytes(
