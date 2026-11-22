@@ -89,7 +89,7 @@ allowlisted hostname, no URL credentials, query string or fragment, no IP-litera
 hosts, no redirects, TLS certificate/hostname verification, DNS resolution checked
 for public IP addresses and the selected IP pinned for the actual socket connection.
 Responses using content encoding are rejected, the response is limited to 2 MiB, and
-the request timeout is 8 seconds. No proxy environment variable or caller-supplied
+the HTTP connection/read timeout is 8 seconds (DNS resolution follows the operating system resolver's timeout policy). No proxy environment variable or caller-supplied
 header is used.
 
 Each stored attestation signs a canonical statement containing the source URI,
