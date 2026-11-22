@@ -134,3 +134,69 @@ def test_audit_endpoint_returns_snapshot_storage_failure_without_listing(monkeyp
     assert response.status_code == 200
     assert response.json()["verification"]["reason"] == "storage_error"
     assert response.json()["entries"] == []
+
+
+def test_health_probe_reuses_recent_database_result(monkeypatch):
+    from omnis import api
+
+    calls = {"audit": 0, "evidence": 0}
+
+    class Probe:
+        def __init__(self, key):
+            self.key = key
+
+        def health(self):
+            calls[self.key] += 1
+            return True if self.key == "audit" else {"valid": True, "checked": 0}
+
+    monkeypatch.setattr(api, "audit", Probe("audit"))
+    monkeypatch.setattr(api, "evidence", Probe("evidence"))
+    api._health_cache["checked_at"] = 0.0
+    api._health_cache["response"] = None
+    assert c.get("/health").status_code == 200
+    assert c.get("/health").status_code == 200
+    assert calls == {"audit": 1, "evidence": 1}
+
+
+def test_audit_endpoint_preserves_specific_integrity_failure(monkeypatch):
+    from omnis import api
+
+    class CorruptAudit:
+        def snapshot(self, limit=50):
+            return {"verification": {"valid": False, "reason": "malformed_event", "failed_index": 7},
+                    "entries": []}
+
+    monkeypatch.setattr(api, "audit", CorruptAudit())
+    response = c.get("/v1/audit")
+    assert response.status_code == 200
+    assert response.json()["verification"] == {
+        "valid": False, "reason": "malformed_event", "failed_index": 7
+    }
+
+
+def test_sqlite_idempotent_evidence_retry_does_not_duplicate_audit(monkeypatch):
+    from omnis import api
+
+    calls = []
+
+    class ExistingEvidence:
+        def append(self, record):
+            return {"sequence": 3, "record_hash": "a" * 64, "idempotent_replay": True}
+
+    class AuditSpy:
+        def record(self, kind, payload):
+            calls.append((kind, payload))
+
+    monkeypatch.setattr(api, "evidence", ExistingEvidence())
+    monkeypatch.setattr(api, "audit", AuditSpy())
+    response = c.post("/v1/evidence", json={
+        "source_uri": "https://example.org/retry",
+        "content_sha256": "a" * 64,
+        "acquired_at": "2026-11-22T10:00:00Z",
+        "acquisition_method": "test",
+        "license": "unknown",
+        "submitted_by": "test",
+        "idempotency_key": "retry-key",
+    })
+    assert response.status_code == 200
+    assert calls == []
