@@ -73,6 +73,7 @@ def test_json_payload_comparison_is_type_sensitive():
     assert _json_equal({"value": 1}, {"value": 1})
     assert not _json_equal({"value": 1}, {"value": True})
     assert not _json_equal({"value": 0}, {"value": False})
+    assert _json_equal({"value": 1e20}, {"value": 100000000000000000000})
 
 
 def test_postgres_audit_decode_handles_non_utc_session_timezone(postgres_audit_dsn):
