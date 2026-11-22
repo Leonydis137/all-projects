@@ -27,6 +27,8 @@ def postgres_dsn():
         db.execute((migration_dir / "003_audit_event_canonical_payload.sql").read_text(encoding="utf-8"))
         db.execute((migration_dir / "004_evidence_idempotency.sql").read_text(encoding="utf-8"))
         db.execute((migration_dir / "005_case_insensitive_source_uri.sql").read_text(encoding="utf-8"))
+        db.execute((migration_dir / "006_tenant_identity.sql").read_text(encoding="utf-8"))
+        db.execute((migration_dir / "007_tenant_evidence.sql").read_text(encoding="utf-8"))
     return DSN
 
 
