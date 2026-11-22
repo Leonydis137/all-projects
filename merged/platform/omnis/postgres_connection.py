@@ -7,6 +7,8 @@ from typing import Any
 
 
 def _sslmode_for_params(params: dict[str, str]) -> str:
+    if params.get("service") or os.environ.get("PGSERVICE"):
+        raise ValueError("libpq service-based PostgreSQL DSNs are unsupported; specify explicit connection parameters")
     raw_host = params.get("host") or ""
     raw_hostaddr = params.get("hostaddr")
     if not raw_host and os.environ.get("PGHOST"):
@@ -24,9 +26,6 @@ def _sslmode_for_params(params: dict[str, str]) -> str:
             return False
 
     if not hosts and not hostaddrs:
-        # libpq may silently resolve hostless DSNs through service files.
-        if params.get("service") or os.environ.get("PGSERVICE"):
-            raise ValueError("hostless PostgreSQL DSNs with libpq service overrides are unsupported")
         return "disable"  # unambiguous libpq default local Unix socket
 
     addresses_are_local = all(is_loopback(address) for address in hostaddrs)
