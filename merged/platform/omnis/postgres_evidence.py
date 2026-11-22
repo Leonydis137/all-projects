@@ -206,7 +206,7 @@ class PostgresEvidenceLedger:
                 else:
                     cur.execute(
                         """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
-                                  declared_license, submitted_by, record_json, previous_hash, record_hash, source_authenticity
+                                  declared_license, submitted_by, idempotency_key, record_json, previous_hash, record_hash, source_authenticity
                            FROM omnis.evidence WHERE sequence < %s
                            ORDER BY sequence DESC LIMIT %s""", (before, limit)
                     )
@@ -232,7 +232,7 @@ class PostgresEvidenceLedger:
                 with db.cursor() as cur:
                     cur.execute(
                         """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
-                                  declared_license, submitted_by, record_json, previous_hash, record_hash
+                                  declared_license, submitted_by, idempotency_key, record_json, previous_hash, record_hash
                            FROM omnis.evidence ORDER BY sequence"""
                     )
                     rows = cur.fetchall()
