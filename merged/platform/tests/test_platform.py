@@ -28,7 +28,10 @@ def test_health_returns_503_when_integrity_verifier_raises(monkeypatch, componen
     from omnis import api
 
     verifier = getattr(api, component)
-    monkeypatch.setattr(verifier, "verify", lambda: (_ for _ in ()).throw(RuntimeError("private storage detail")))
+    api._health_cache["checked_at"] = 0.0
+    api._health_cache["response"] = None
+    method = "health" if hasattr(verifier, "health") else "verify"
+    monkeypatch.setattr(verifier, method, lambda: (_ for _ in ()).throw(RuntimeError("private storage detail")))
     response = c.get("/health")
     assert response.status_code == 503
     assert response.json()["status"] == "degraded"
