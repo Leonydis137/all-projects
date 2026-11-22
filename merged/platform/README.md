@@ -28,11 +28,13 @@ uvicorn omnis.api:app --host 127.0.0.1 --port 8080
 
 Set `OMNIS_API_TOKEN` to protect API routes. Without `OMNIS_DATABASE_URL`, OMNIS uses
 the persistent SQLite database selected by `OMNIS_EVIDENCE_DB`. To use PostgreSQL,
-apply migrations 001, 002, 003, and 004 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
+apply migrations 001 through 005 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
 DSN for a dedicated runtime role with schema USAGE and SELECT/INSERT privileges only.
 Remote connections require certificate and hostname verification (`sslmode=verify-full`);
 configure the provider CA as the libpq root certificate. The runtime never runs schema
-migrations automatically. Export and verify existing SQLite evidence before switching;
+migrations automatically. Set `OMNIS_DB_VERIFY_TIMEOUT_MS` to control the full-chain
+verification statement timeout (default 300000 ms); routine health probes remain bounded
+by the 10000 ms query timeout. Export and verify existing SQLite evidence before switching;
 setting the PostgreSQL URL does not automatically copy the SQLite records. Supply an optional
 `idempotency_key` on evidence submissions to make client retries return the original row;
 reusing a key with different record content is rejected.
