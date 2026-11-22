@@ -118,7 +118,7 @@ class PostgresTenantEvidenceLedger:
                 previous_hash = self._head_hash(cur, tenant)
                 if clean.get("idempotency_key"):
                     cur.execute(
-                        """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
+                        """SELECT tenant_id, sequence, source_uri, content_sha256, acquired_at, acquisition_method,
                                   declared_license, submitted_by, idempotency_key, record_json,
                                   previous_hash, record_hash
                            FROM omnis.tenant_evidence
@@ -190,7 +190,7 @@ class PostgresTenantEvidenceLedger:
                 self._scope(cur, tenant)
                 if before is None:
                     cur.execute(
-                        """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
+                        """SELECT tenant_id, sequence, source_uri, content_sha256, acquired_at, acquisition_method,
                                   declared_license, submitted_by, idempotency_key, record_json,
                                   previous_hash, record_hash
                            FROM omnis.tenant_evidence
@@ -199,7 +199,7 @@ class PostgresTenantEvidenceLedger:
                     )
                 else:
                     cur.execute(
-                        """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
+                        """SELECT tenant_id, sequence, source_uri, content_sha256, acquired_at, acquisition_method,
                                   declared_license, submitted_by, idempotency_key, record_json,
                                   previous_hash, record_hash
                            FROM omnis.tenant_evidence
@@ -219,7 +219,7 @@ class PostgresTenantEvidenceLedger:
                 with db.cursor() as cur:
                     self._scope(cur, tenant)
                     cur.execute(
-                        """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
+                        """SELECT tenant_id, sequence, source_uri, content_sha256, acquired_at, acquisition_method,
                                   declared_license, submitted_by, idempotency_key, record_json,
                                   previous_hash, record_hash
                            FROM omnis.tenant_evidence
