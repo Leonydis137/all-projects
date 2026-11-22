@@ -1,0 +1,74 @@
+{
+  "generated_at": "2026-11-22",
+  "destination": "Leonydis138/all-projects",
+  "destination_visibility": "public",
+  "branch": "integration/omnis-evidence-foundation",
+  "sources": [
+    {
+      "repository": "Leonydis138/Covenant-ai",
+      "visibility": "public",
+      "default_branch": "main",
+      "source_commit": "c9d917b9b258d48b228f131749b56dad352149e0",
+      "destination_path": "services/covenant",
+      "status": "reconciled_partial_import",
+      "source_tracked_files": 75,
+      "identical_existing_files": 59,
+      "divergent_existing_files_preserved": 14,
+      "new_files_added": [
+        "services/covenant/CONTRIBUTING.md",
+        "services/covenant/docker-compose.full.yml",
+        "services/covenant/IMPORT-NOTES-COVENANT-AI.md"
+      ],
+      "license": "No standard LICENSE file found; owner should select and document a licence before external redistribution.",
+      "validation": "Not yet executed as an isolated application."
+    },
+    {
+      "repository": "Leonydis138/neural_sovereign",
+      "visibility": "public",
+      "default_branch": "main",
+      "source_commit": "96dd6bd95e315258c043a6e382ff83a22cd8d25e",
+      "destination_path": "apps/web/neural-sovereign",
+      "status": "already_imported_exact_tree_match",
+      "source_tracked_files": 43,
+      "identical_existing_files": 43,
+      "new_files_added": [],
+      "license": "No standard LICENSE file found in source tree.",
+      "validation": "Tree identity verified; application build/runtime not re-executed in this import pass."
+    },
+    {
+      "repository": "Leonydis138/uuma",
+      "visibility": "public",
+      "default_branch": "main",
+      "source_commit": "67b06ec3c9e166eb2957ffb4fc1f0c9c7d0a6cdc",
+      "destination_path": "research/uuma",
+      "status": "already_imported_exact_tree_match",
+      "source_tracked_files": 63,
+      "identical_existing_files": 63,
+      "new_files_added": [],
+      "license": "LICENSE_NOTE.txt explicitly says to choose and add a LICENSE file before publishing; no standard LICENSE file found.",
+      "validation": "Tree identity verified; prior test claims in source README are not re-run by this import pass."
+    },
+    {
+      "repository": "Leonydis138/Nexus",
+      "visibility": "public",
+      "default_branch": "main",
+      "source_commit": "1753a74475ee6f1144356bccf019b669c476a2e6",
+      "destination_path": "archive/stubs/nexus",
+      "status": "already_imported_readme_only",
+      "source_tracked_files": 1,
+      "identical_existing_files": 1,
+      "new_files_added": [],
+      "license": "No standard LICENSE file found in source tree.",
+      "validation": "Repository contains only a short README; no executable project to integrate."
+    }
+  ],
+  "excluded_still_private": [
+    "Leonydis138/omnigpt-web",
+    "Leonydis138/SA-Threads---Premier-Online-Fashion",
+    "Leonydis138/jacobsbayaccomodation",
+    "Leonydis138/Jacobsbay-Accomodation",
+    "Leonydis138/Site-Mirror",
+    "Leonydis138/combined-repositories"
+  ],
+  "policy": "Do not import private repositories into the public destination. Never copy populated .env files, secrets, production/customer data, or unreviewed archives."
+}
