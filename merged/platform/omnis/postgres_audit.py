@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+from decimal import Decimal
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -17,11 +18,29 @@ def _canonical(value: dict[str, Any]) -> bytes:
     return json.dumps(value, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
 
 
+def _json_normalize(value: Any):
+    """Normalize JSONB-compatible values, including PostgreSQL numeric formatting."""
+    if isinstance(value, bool):
+        return ("bool", value)
+    if value is None:
+        return ("null",)
+    if isinstance(value, (int, float, Decimal)):
+        return ("number", Decimal(str(value)).normalize())
+    if isinstance(value, dict):
+        return ("object", tuple(sorted((str(key), _json_normalize(item)) for key, item in value.items())))
+    if isinstance(value, list):
+        return ("array", tuple(_json_normalize(item) for item in value))
+    if isinstance(value, str):
+        return ("string", value)
+    raise TypeError(f"unsupported JSON value type: {type(value).__name__}")
+
+
 def _json_equal(left: Any, right: Any) -> bool:
-    """Compare JSON values without Python's bool/int equality ambiguity."""
-    return json.dumps(left, sort_keys=True, separators=(",", ":"), ensure_ascii=False) == json.dumps(
-        right, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    )
+    """Compare JSON semantics while distinguishing booleans from numbers."""
+    try:
+        return _json_normalize(left) == _json_normalize(right)
+    except (TypeError, ValueError, ArithmeticError):
+        return False
 
 
 class PostgresAuditLog:
