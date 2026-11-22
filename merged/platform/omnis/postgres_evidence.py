@@ -245,6 +245,8 @@ class PostgresEvidenceLedger:
                 previous_hash = expected
                 checked += 1
             return {"valid": True, "checked": checked, "head": previous_hash}
-        except Exception:
+        except Exception as exc:
             _LOG.exception("OMNIS evidence-ledger verification failed")
-            return {"valid": False, "checked": checked, "reason": "storage_error"}
+            reason = "verification_timeout" if type(exc).__name__ in {"QueryCanceled", "QueryCanceledError"} else "storage_error"
+            return {"valid": False, "checked": checked, "reason": reason,
+                    "error_type": type(exc).__name__}
