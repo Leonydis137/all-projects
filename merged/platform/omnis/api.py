@@ -9,6 +9,7 @@ from typing import Any, Optional
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from . import __version__, assistant, catalog, config, governance, inventory, mathops, sources, stats
@@ -65,7 +66,7 @@ async def audit_api_requests(request: Request, call_next):
             identity_error = InvalidCredential("missing or invalid bearer credential")
         else:
             try:
-                principal = authenticate_api_key(token, request.headers.get("x-omnis-tenant"))
+                principal = await run_in_threadpool(authenticate_api_key, token, request.headers.get("x-omnis-tenant"))
             except (InvalidCredential, IdentityUnavailable) as exc:
                 identity_error = exc
         request.state.identity_principal = principal
