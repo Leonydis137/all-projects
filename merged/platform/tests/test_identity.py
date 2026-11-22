@@ -241,3 +241,15 @@ def test_tenant_evidence_routes_enforce_role_and_tenant_context(monkeypatch):
     assert listed.status_code == 200
     assert listed.json()["records"][0]["tenant_id"] == tenant
     assert test_audit.verify()
+
+
+def test_tenant_credential_cannot_access_legacy_global_routes(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api, config
+
+    monkeypatch.setattr(config, "API_TOKEN", "legacy-only-token")
+    response = TestClient(api.app).get(
+        "/v1/catalog",
+        headers={"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"},
+    )
+    assert response.status_code == 401
