@@ -52,14 +52,19 @@ def _parse_source_uri(source_uri: str) -> tuple[str, str]:
         raise SourcePolicyError("only credential-free HTTPS URLs on port 443 without query or fragment are allowed")
     try:
         normalized_host = host.encode("idna").decode("ascii").lower().rstrip(".")
-        ipaddress.ip_address(normalized_host)
-    except ValueError:
-        normalized_host = host.encode("idna").decode("ascii").lower().rstrip(".")
     except UnicodeError as exc:
         raise SourcePolicyError("source hostname is invalid") from exc
+    try:
+        ipaddress.ip_address(normalized_host)
+    except ValueError:
+        pass
+    else:
+        raise SourcePolicyError("IP-literal source URLs are not allowed")
     if not normalized_host or normalized_host not in _allowed_hosts():
         raise SourcePolicyError("source hostname is not in OMNIS_SOURCE_ALLOWLIST")
     path = parsed.path or "/"
+    if any(ord(char) < 0x20 or ord(char) == 0x7f or char == " " for char in path):
+        raise SourcePolicyError("source path contains invalid characters")
     return normalized_host, path
 
 
@@ -138,7 +143,9 @@ def _signing_key():
     if not encoded:
         raise SourceUnavailable("source acquisition signing key is not configured")
     try:
-        raw = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+        raw = base64.b64decode(
+            encoded + "=" * (-len(encoded) % 4), altchars=b"-_", validate=True
+        )
         if len(raw) != 32:
             raise ValueError("expected a 32-byte Ed25519 private key")
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
