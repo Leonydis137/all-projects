@@ -92,7 +92,7 @@ class PostgresEvidenceLedger:
             "source_authenticity": "unverified",
         }
 
-    def _head_hash(self, cur) -> str:
+    def _head_hash(self, cur) -> tuple[str, int]:
         """Validate the retained chain head before extending the evidence ledger."""
         cur.execute(
             """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
@@ -101,7 +101,7 @@ class PostgresEvidenceLedger:
         )
         rows = cur.fetchall()
         if not rows:
-            return "0" * 64
+            return "0" * 64, 0
         latest = rows[0]
         latest_record = self._record(latest)
         latest_body = {key: latest_record[key] for key in (
@@ -127,7 +127,7 @@ class PostgresEvidenceLedger:
                 raise EvidenceIntegrityError("evidence ledger predecessor failed integrity verification")
         elif latest["previous_hash"] != "0" * 64:
             raise EvidenceIntegrityError("evidence ledger first record has an invalid predecessor")
-        return latest["record_hash"]
+        return latest["record_hash"], len(rows)
 
     def append(self, record: dict[str, Any]) -> dict[str, Any]:
         """Append through the configured audit log; unpaired writes are rejected."""
@@ -144,7 +144,7 @@ class PostgresEvidenceLedger:
             with db.cursor() as cur:
                 cur.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
                 cur.execute("SELECT pg_advisory_xact_lock(hashtext('omnis.evidence'))")
-                previous_hash = self._head_hash(cur)
+                previous_hash, _checked = self._head_hash(cur)
                 if clean.get("idempotency_key"):
                     cur.execute(
                         """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
@@ -224,8 +224,8 @@ class PostgresEvidenceLedger:
         try:
             with self._connect() as db:
                 with db.cursor() as cur:
-                    head = self._head_hash(cur)
-            return {"valid": True, "checked": 2 if head != "0" * 64 else 0, "head": head}
+                    head, checked = self._head_hash(cur)
+            return {"valid": True, "checked": checked, "head": head}
         except Exception:
             _LOG.exception("OMNIS evidence health probe failed")
             return {"valid": False, "checked": 0, "reason": "storage_error"}
