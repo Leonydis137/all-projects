@@ -1,2 +1,31 @@
 # all-projects
-Unified monorepo consolidating Leonydis138's Covenant, AI, web, and experimental projects.
+
+Monorepo of all projects by Juan-Louw Greyling (juanlouw.greyling@gmail.com).
+
+- [`CodeEvolveAI`](./CodeEvolveAI/)
+- [`Codegenie`](./Codegenie/)
+- [`Combined`](./Combined/)
+- [`Covenant-Enterprise`](./Covenant-Enterprise/)
+- [`Covenant-ai`](./Covenant-ai/)
+- [`Covenant`](./Covenant/)
+- [`Covenant_Enterprise_V5.0`](./Covenant_Enterprise_V5.0/)
+- [`Discussion_Bot`](./Discussion_Bot/)
+- [`EAON-AI-Engine`](./EAON-AI-Engine/)
+- [`GCD-PvsNP`](./GCD-PvsNP/)
+- [`Jacobsbay-Accomodation`](./Jacobsbay-Accomodation/)
+- [`Nexus`](./Nexus/)
+- [`PlayGround`](./PlayGround/)
+- [`Predictor`](./Predictor/)
+- [`Project-Genesis`](./Project-Genesis/)
+- [`Quantum-Flow-OS`](./Quantum-Flow-OS/)
+- [`SA-Threads---Premier-Online-Fashion`](./SA-Threads---Premier-Online-Fashion/)
+- [`autonomous-AI`](./autonomous-AI/)
+- [`blank-app`](./blank-app/)
+- [`chatgpt-android-os`](./chatgpt-android-os/)
+- [`combined-repositories`](./combined-repositories/)
+- [`hybrid-sat-solver-portal`](./hybrid-sat-solver-portal/)
+- [`jacobsbayaccomodationtemp.io`](./jacobsbayaccomodationtemp.io/)
+- [`juan-louw.greyling.github.io`](./juan-louw.greyling.github.io/)
+- [`neural_sovereign`](./neural_sovereign/)
+- [`omnigpt-mobile`](./omnigpt-mobile/)
+- [`omnigpt-web`](./omnigpt-web/)
