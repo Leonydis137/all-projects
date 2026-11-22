@@ -11,12 +11,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: m
+        shell: bash
         run: |
+          set -euo pipefail
+          test -s merged/sources/projects.json
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json
-          projects = json.load(open("merged/sources/projects.json"))["projects"]
-          selected = [p for p in projects if p["kind"] in ("node", "python")]
-          print("matrix=" + json.dumps({"include": selected}))
+          import sys
+          from pathlib import Path
+
+          source = Path("merged/sources/projects.json")
+          payload = json.loads(source.read_text(encoding="utf-8"))
+          projects = payload.get("projects")
+          if not isinstance(projects, list):
+              raise SystemExit("projects.json must contain a projects array")
+          selected = [
+              p for p in projects
+              if isinstance(p, dict) and p.get("kind") in ("node", "python")
+              and isinstance(p.get("path"), str) and p["path"]
+          ]
+          if not selected:
+              raise SystemExit("No node/python projects found for CI matrix")
+          matrix = {"include": selected}
+          encoded = json.dumps(matrix, separators=(",", ":"))
+          print(f"Selected {len(selected)} projects; matrix payload {len(encoded)} bytes", file=sys.stderr)
+          print("matrix=" + encoded)
           PY
   test:
     needs: detect
@@ -41,6 +60,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: python -m pip install -r merged/platform/requirements.txt
-      - run: python -m pip install pytest
-      - run: PYTHONPATH=merged/platform python -m pytest -q merged/platform/tests
+      - name: Verify platform test inputs
+        run: |
+          set -euxo pipefail
+          test -s merged/platform/requirements.txt
+          test -d merged/platform/omnis
+          test -d merged/platform/tests
+          python --version
+      - name: Install platform dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r merged/platform/requirements.txt
+          python -m pip check
+      - name: Run platform contract tests
+        env:
+          PYTHONPATH: merged/platform
+          OMNIS_API_TOKEN: ci-test-token
+          OMNIS_EVIDENCE_DB: ${{ runner.temp }}/omnis-evidence.sqlite3
+        run: python -m pytest -vv --tb=short merged/platform/tests

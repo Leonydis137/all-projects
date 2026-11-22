@@ -18,6 +18,11 @@ def _record(index: int = 1) -> dict:
     }
 
 
+def test_in_memory_ledger_is_rejected_as_non_persistent():
+    with pytest.raises(ValueError, match="file-backed"):
+        EvidenceLedger(":memory:")
+
+
 def test_empty_ledger_is_valid_and_persistent(tmp_path):
     path = tmp_path / "evidence.sqlite3"
     first = EvidenceLedger(path)

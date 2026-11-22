@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -113,14 +113,27 @@ class EvidenceIn(BaseModel):
 
 
 @app.get("/health")
-def health() -> dict:
-    audit_valid = audit.verify()
-    evidence_status = evidence.verify()
-    healthy = bool(audit_valid and evidence_status.get("valid"))
-    return {"status": "ok" if healthy else "degraded", "version": __version__,
-            "sources": str(config.SOURCES), "sources_present": config.SOURCES.is_dir(),
-            "import_roots": sources.wire() or "already wired", "audit_chain_valid": audit_valid,
-            "evidence_ledger": evidence_status, "assistant_configured": bool(config.ANTHROPIC_API_KEY)}
+def health():
+    """Expose integrity failures as an unhealthy HTTP response without leaking internals."""
+    try:
+        audit_valid = bool(audit.verify())
+    except Exception:
+        audit_valid = False
+    try:
+        evidence_status = evidence.verify()
+        if not isinstance(evidence_status, dict) or not isinstance(evidence_status.get("valid"), bool):
+            evidence_status = {"valid": False, "reason": "invalid_verifier_response"}
+    except Exception:
+        evidence_status = {"valid": False, "reason": "verification_error"}
+
+    healthy = audit_valid and evidence_status["valid"]
+    payload = {"status": "ok" if healthy else "degraded", "version": __version__,
+               "sources": str(config.SOURCES), "sources_present": config.SOURCES.is_dir(),
+               "import_roots": sources.wire() or "already wired", "audit_chain_valid": audit_valid,
+               "evidence_ledger": evidence_status, "assistant_configured": bool(config.ANTHROPIC_API_KEY)}
+    if not healthy:
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 
 @app.get("/v1/catalog", dependencies=[Depends(auth)])

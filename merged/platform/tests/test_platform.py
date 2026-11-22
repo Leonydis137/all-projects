@@ -2,17 +2,43 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from omnis import governance, stats
+from omnis import config, governance, stats
 from omnis.api import app
 from omnis.protocols import AEON, Context
 from omnis.recommend import Recommender
 
-c = TestClient(app)
+@pytest.fixture(autouse=True)
+def _configured_test_token(monkeypatch):
+    monkeypatch.setattr(config, "API_TOKEN", "test-token")
+
+
+c = TestClient(app, headers={"Authorization": "Bearer test-token"})
 
 
 def test_health_and_sources():
-    h = c.get("/health").json()
+    response = c.get("/health")
+    h = response.json()
+    assert response.status_code == 200
     assert h["status"] == "ok" and h["sources_present"]
+    assert h["evidence_ledger"]["valid"]
+
+
+@pytest.mark.parametrize("component", ["audit", "evidence"])
+def test_health_returns_503_when_integrity_verifier_raises(monkeypatch, component):
+    from omnis import api
+
+    verifier = getattr(api, component)
+    monkeypatch.setattr(verifier, "verify", lambda: (_ for _ in ()).throw(RuntimeError("private storage detail")))
+    response = c.get("/health")
+    assert response.status_code == 503
+    assert response.json()["status"] == "degraded"
+    assert "private storage detail" not in response.text
+
+
+def test_protected_api_fails_closed_when_token_is_unset(monkeypatch):
+    monkeypatch.setattr(config, "API_TOKEN", "")
+    response = c.get("/v1/catalog")
+    assert response.status_code == 503
 
 
 def test_catalog_covers_all_projects():
@@ -69,7 +95,9 @@ def test_audit_chain():
 
 def test_sites_served():
     assert c.get("/sites/portfolio/").status_code == 200
-    assert c.get("/").status_code == 200
+    console = c.get("/")
+    assert console.status_code == 200
+    assert "evidence ledger" in console.text.lower()
 
 
 def test_assistant_requires_key(monkeypatch):
