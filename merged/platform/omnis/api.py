@@ -57,8 +57,8 @@ async def audit_api_requests(request: Request, call_next):
     if not path.startswith("/v1/") or (path == "/v1/audit" and request.method == "GET"):
         return await call_next(request)
 
-    # Tenant credentials are deliberately accepted only by the identity probe
-    # until all resource stores enforce tenant scoping.
+    # Tenant credentials are accepted only by tenant-aware identity and evidence routes.
+    # All other resource stores remain behind the legacy single-tenant token.
     principal = None
     identity_error = None
     tenant_auth_paths = {
