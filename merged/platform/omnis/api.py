@@ -24,7 +24,7 @@ engine = default_engine()
 aeon = AEON()
 audit = (PostgresAuditLog(config.DATABASE_URL, actor=os.environ.get("OMNIS_AUDIT_ACTOR", "omnis-api"))
          if config.DATABASE_URL else memory_audit)
-evidence = (PostgresEvidenceLedger(config.DATABASE_URL) if config.DATABASE_URL else
+evidence = (PostgresEvidenceLedger(config.DATABASE_URL, audit_log=audit) if config.DATABASE_URL else
             EvidenceLedger(os.environ.get("OMNIS_EVIDENCE_DB", str(config.PLATFORM_DIR / "var" / "evidence.sqlite3"))))
 STATIC = Path(__file__).parent / "static"
 
