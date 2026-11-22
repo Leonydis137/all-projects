@@ -164,3 +164,11 @@ def test_concurrent_startup_serializes_legacy_sqlite_column_migration(tmp_path):
         indexes = {row[1] for row in db.execute("PRAGMA index_list(evidence)")}
     assert "idempotency_key" in columns
     assert "evidence_idempotency_key_uq" in indexes
+
+
+def test_ledger_rejects_malformed_http_uri_as_validation_error(tmp_path):
+    ledger = EvidenceLedger(tmp_path / "evidence.sqlite3")
+    record = _record()
+    record["source_uri"] = "https://[malformed"
+    with pytest.raises(EvidenceValidationError, match="valid absolute HTTP"):
+        ledger.append(record)
