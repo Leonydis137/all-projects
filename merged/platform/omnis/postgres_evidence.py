@@ -64,17 +64,23 @@ class PostgresEvidenceLedger:
             "idempotency_key": payload.get("idempotency_key"),
         }
         for column, expected_value in expected_fields.items():
-            actual = row[column]
-            if column == "content_sha256":
-                actual = actual.strip()
+            try:
+                actual = row[column]
+                if column == "content_sha256":
+                    actual = actual.strip()
+            except (KeyError, AttributeError, TypeError) as exc:
+                raise EvidenceIntegrityError(f"stored evidence column {column} is malformed") from exc
             if actual != expected_value:
                 raise EvidenceColumnMismatch(f"evidence column {column} differs from record_json")
-        stored_time = row["acquired_at"]
-        if stored_time.tzinfo is None:
-            stored_time = stored_time.replace(tzinfo=timezone.utc)
-        else:
-            stored_time = stored_time.astimezone(timezone.utc)
-        expected_time = datetime.fromisoformat(payload["acquired_at"].replace("Z", "+00:00")).astimezone(timezone.utc)
+        try:
+            stored_time = row["acquired_at"]
+            if stored_time.tzinfo is None:
+                stored_time = stored_time.replace(tzinfo=timezone.utc)
+            else:
+                stored_time = stored_time.astimezone(timezone.utc)
+            expected_time = datetime.fromisoformat(payload["acquired_at"].replace("Z", "+00:00")).astimezone(timezone.utc)
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise EvidenceIntegrityError("stored evidence timestamp is malformed") from exc
         if stored_time != expected_time:
             raise EvidenceColumnMismatch("evidence column acquired_at differs from record_json")
         return {
@@ -106,7 +112,7 @@ class PostgresEvidenceLedger:
             _canonical({"record": latest_body, "previous_hash": latest["previous_hash"]})
         ).hexdigest()
         if expected != latest["record_hash"]:
-            raise RuntimeError("evidence ledger head failed integrity verification")
+            raise EvidenceIntegrityError("evidence ledger head failed integrity verification")
         if len(rows) > 1:
             previous = rows[1]
             previous_record = self._record(previous)
@@ -118,9 +124,9 @@ class PostgresEvidenceLedger:
                 _canonical({"record": previous_body, "previous_hash": previous["previous_hash"]})
             ).hexdigest()
             if previous_expected != previous["record_hash"] or latest["previous_hash"] != previous["record_hash"]:
-                raise RuntimeError("evidence ledger predecessor failed integrity verification")
+                raise EvidenceIntegrityError("evidence ledger predecessor failed integrity verification")
         elif latest["previous_hash"] != "0" * 64:
-            raise RuntimeError("evidence ledger first record has an invalid predecessor")
+            raise EvidenceIntegrityError("evidence ledger first record has an invalid predecessor")
         return latest["record_hash"]
 
     def append(self, record: dict[str, Any]) -> dict[str, Any]:
@@ -159,7 +165,7 @@ class PostgresEvidenceLedger:
                             _canonical({"record": stored, "previous_hash": existing["previous_hash"]})
                         ).hexdigest()
                         if stored_hash != existing["record_hash"]:
-                            raise RuntimeError("existing idempotent evidence row failed integrity verification")
+                            raise EvidenceIntegrityError("existing idempotent evidence row failed integrity verification")
                         audit_payload = json.dumps(
                             {"sequence": existing["sequence"], "record_hash": existing["record_hash"]},
                             sort_keys=True, separators=(",", ":"),
@@ -170,7 +176,7 @@ class PostgresEvidenceLedger:
                             (audit_payload,),
                         )
                         if cur.fetchone() is None:
-                            raise RuntimeError("existing evidence row has no corresponding audit event")
+                            raise EvidenceIntegrityError("existing evidence row has no corresponding audit event")
                         return self._record(existing)
                 digest = hashlib.sha256(_canonical({"record": clean, "previous_hash": previous_hash})).hexdigest()
                 cur.execute(
