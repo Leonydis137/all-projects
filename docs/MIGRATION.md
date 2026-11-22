@@ -1,7 +1,7 @@
 # Migration map (old folder → new location)
 Author: Juan-Louw Greyling <juanlouw.greyling@gmail.com>
 
-History is preserved (`git log --follow <new path>`); original repos are untouched.
+Every original commit is preserved in this repo's history (each import merge commit's second parent is that repo's full history, e.g. `git log "$(git log --grep='Merge Covenant ' --format=%H -1)^2"`). Per-file `git log --follow` does not trace across the folder moves. Original repos are untouched.
 
 | Old folder | New location |
 |---|---|
