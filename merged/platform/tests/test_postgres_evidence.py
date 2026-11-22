@@ -240,3 +240,73 @@ def test_postgres_preserves_signed_attestation_in_hash_chain(postgres_dsn):
     attested = next(item for item in listed if item["sequence"] == first["sequence"])
     assert attested["provenance_attestation"] == record["provenance_attestation"]
     assert ledger.verify()["valid"] is True
+
+
+
+def _create_tenant_owner(dsn: str, marker: str) -> tuple[str, str]:
+    import psycopg
+
+    with psycopg.connect(dsn) as db:
+        tenant = db.execute(
+            "INSERT INTO omnis.tenant (slug, display_name) VALUES (%s, %s) RETURNING tenant_id",
+            ("t-" + marker[:40], "Tenant " + marker[:20]),
+        ).fetchone()[0]
+        principal = db.execute(
+            "INSERT INTO omnis.principal (email, display_name) VALUES (%s, %s) RETURNING principal_id",
+            (marker + "@example.test", "Owner " + marker[:20]),
+        ).fetchone()[0]
+        db.execute(
+            "INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role) VALUES (%s, %s, 'owner')",
+            (tenant, principal),
+        )
+    return str(tenant), str(principal)
+
+
+def test_tenant_evidence_isolation_idempotency_and_audit(postgres_dsn):
+    from omnis.postgres_audit import PostgresAuditLog
+    from omnis.postgres_tenant_evidence import PostgresTenantEvidenceLedger
+
+    marker = uuid4().hex
+    tenant_a, actor_a = _create_tenant_owner(postgres_dsn, "a" + marker)
+    tenant_b, actor_b = _create_tenant_owner(postgres_dsn, "b" + marker)
+    audit = PostgresAuditLog(postgres_dsn)
+    ledger = PostgresTenantEvidenceLedger(postgres_dsn)
+    key = "tenant-retry-" + marker
+
+    first = ledger.append_with_audit(
+        {**_record("tenant-a-" + marker), "idempotency_key": key},
+        tenant_a, actor_a, audit,
+    )
+    replay = ledger.append_with_audit(
+        {**_record("tenant-a-" + marker), "idempotency_key": key},
+        tenant_a, actor_a, audit,
+    )
+    other_tenant = ledger.append_with_audit(
+        {**_record("tenant-b-" + marker), "idempotency_key": key},
+        tenant_b, actor_b, audit,
+    )
+
+    assert replay["sequence"] == first["sequence"]
+    assert replay["idempotent_replay"] is True
+    assert first["submitted_by"] == actor_a
+    assert other_tenant["submitted_by"] == actor_b
+    assert len(ledger.list(tenant_a)) == 1
+    assert len(ledger.list(tenant_b)) == 1
+    assert ledger.verify(tenant_a)["valid"] is True
+    assert ledger.verify(tenant_b)["valid"] is True
+    assert audit.verify() is True
+
+
+def test_tenant_evidence_table_enforces_rls_and_immutability(postgres_dsn):
+    import psycopg
+
+    with psycopg.connect(postgres_dsn) as db:
+        flags = db.execute(
+            """SELECT relrowsecurity, relforcerowsecurity
+               FROM pg_class WHERE oid = 'omnis.tenant_evidence'::regclass"""
+        ).fetchone()
+        assert flags == (True, True)
+        policies = db.execute(
+            "SELECT count(*) FROM pg_policies WHERE schemaname = 'omnis' AND tablename = 'tenant_evidence'"
+        ).fetchone()[0]
+        assert policies == 1
