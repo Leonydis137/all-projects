@@ -4,7 +4,7 @@ CREATE SCHEMA IF NOT EXISTS omnis;
 
 CREATE TABLE IF NOT EXISTS omnis.evidence (
     sequence BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    source_uri TEXT NOT NULL CHECK (source_uri ~ '^https?://'),
+    source_uri TEXT NOT NULL CHECK (source_uri ~* '^https?://'),
     content_sha256 CHAR(64) NOT NULL CHECK (content_sha256 ~ '^[0-9a-f]{64}$'),
     acquired_at TIMESTAMPTZ NOT NULL,
     acquisition_method TEXT NOT NULL,
