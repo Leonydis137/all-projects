@@ -20,14 +20,15 @@ class AuditLog:
             return body
 
     def verify(self) -> bool:
-        prev = "0" * 64
-        for entry in self.entries:
-            body = {key: value for key, value in entry.items() if key != "hash"}
-            if (body["prev"] != prev or
-                    hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest() != entry["hash"]):
-                return False
-            prev = entry["hash"]
-        return True
+        with self._lock:
+            prev = "0" * 64
+            for entry in self.entries:
+                body = {key: value for key, value in entry.items() if key != "hash"}
+                if (body["prev"] != prev or
+                        hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest() != entry["hash"]):
+                    return False
+                prev = entry["hash"]
+            return True
 
     def snapshot(self, limit: int = 50) -> dict:
         """Verify and return audit entries under one in-memory lock."""
