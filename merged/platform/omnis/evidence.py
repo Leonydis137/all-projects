@@ -1,7 +1,7 @@
 """Persistent, append-only evidence ledger for OMNIS.
 
 The ledger verifies record integrity, not the truth of a submitter's claims.
-Source authenticity requires independent retrieval or cryptographic signatures.
+Publisher authenticity requires an independently trusted publisher identity or signature; a platform fetch signature attests only to the fetcher's observation.
 """
 from __future__ import annotations
 
