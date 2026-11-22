@@ -9,7 +9,10 @@ from omnis.recommend import Recommender
 
 @pytest.fixture(autouse=True)
 def _configured_test_token(monkeypatch):
+    from omnis import api
     monkeypatch.setattr(config, "API_TOKEN", "test-token")
+    api._health_cache["checked_at"] = 0.0
+    api._health_cache["response"] = None
 
 
 c = TestClient(app, headers={"Authorization": "Bearer test-token"})
@@ -114,3 +117,20 @@ def test_token_auth(monkeypatch):
     monkeypatch.setattr(config, "API_TOKEN", "s3cret")
     assert c.get("/v1/catalog").status_code == 401
     assert c.get("/v1/catalog", headers={"Authorization": "Bearer s3cret"}).status_code == 200
+
+
+def test_audit_endpoint_returns_snapshot_storage_failure_without_listing(monkeypatch):
+    from omnis import api
+
+    class UnavailableAudit:
+        def snapshot(self, limit=50):
+            return {"verification": {"valid": False, "reason": "storage_error"}, "entries": []}
+
+        def list(self, limit=50):
+            raise AssertionError("snapshot response must not issue a second list query")
+
+    monkeypatch.setattr(api, "audit", UnavailableAudit())
+    response = c.get("/v1/audit")
+    assert response.status_code == 200
+    assert response.json()["verification"]["reason"] == "storage_error"
+    assert response.json()["entries"] == []
