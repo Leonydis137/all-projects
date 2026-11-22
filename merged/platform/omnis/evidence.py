@@ -62,6 +62,28 @@ def _validate(record: dict[str, Any]) -> dict[str, Any]:
         if key_length > 256:
             raise EvidenceValidationError("idempotency_key must not exceed 256 UTF-8 bytes")
         clean["idempotency_key"] = idempotency_key.strip()
+    attestation = record.get("provenance_attestation")
+    if attestation is not None:
+        if not isinstance(attestation, dict):
+            raise EvidenceValidationError("provenance_attestation must be an object")
+        try:
+            encoded_attestation = json.dumps(
+                attestation, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+            ).encode("utf-8")
+        except (TypeError, ValueError, UnicodeEncodeError) as exc:
+            raise EvidenceValidationError("provenance_attestation must be canonical JSON data") from exc
+        if len(encoded_attestation) > 16_384:
+            raise EvidenceValidationError("provenance_attestation exceeds 16384 bytes")
+        statement = attestation.get("statement")
+        if (not isinstance(statement, dict) or attestation.get("algorithm") != "Ed25519"
+                or not isinstance(attestation.get("key_id"), str)
+                or not _SHA256.fullmatch(attestation["key_id"])
+                or not isinstance(attestation.get("public_key_b64"), str)
+                or not isinstance(attestation.get("signature_b64"), str)):
+            raise EvidenceValidationError("provenance_attestation has an invalid structure")
+        if statement.get("content_sha256") != clean["content_sha256"] or statement.get("source_uri") != clean["source_uri"]:
+            raise EvidenceValidationError("provenance_attestation does not match the evidence source and digest")
+        clean["provenance_attestation"] = json.loads(encoded_attestation)
     return clean
 
 
