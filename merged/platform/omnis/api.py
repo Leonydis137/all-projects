@@ -10,9 +10,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import __version__, assistant, catalog, config, governance, inventory, mathops, sources, stats
-from .audit import audit
+from .audit import audit as memory_audit
+from .postgres_audit import PostgresAuditLog
 from .decision import Rule, default_engine
 from .evidence import EvidenceLedger, EvidenceValidationError
+from .postgres_evidence import PostgresEvidenceLedger
 from .protocols import AEON, Context
 from .recommend import Recommender
 
@@ -20,7 +22,10 @@ sources.wire()
 app = FastAPI(title="OMNIS", version=__version__, description="All projects, one platform.")
 engine = default_engine()
 aeon = AEON()
-evidence = EvidenceLedger(os.environ.get("OMNIS_EVIDENCE_DB", str(config.PLATFORM_DIR / "var" / "evidence.sqlite3")))
+audit = (PostgresAuditLog(config.DATABASE_URL, actor=os.environ.get("OMNIS_AUDIT_ACTOR", "omnis-api"))
+         if config.DATABASE_URL else memory_audit)
+evidence = (PostgresEvidenceLedger(config.DATABASE_URL) if config.DATABASE_URL else
+            EvidenceLedger(os.environ.get("OMNIS_EVIDENCE_DB", str(config.PLATFORM_DIR / "var" / "evidence.sqlite3"))))
 STATIC = Path(__file__).parent / "static"
 
 
@@ -110,17 +115,18 @@ class EvidenceIn(BaseModel):
     acquisition_method: str
     license: str
     submitted_by: str
+    idempotency_key: Optional[str] = None
 
 
 @app.get("/health")
 def health():
     """Expose integrity failures as an unhealthy HTTP response without leaking internals."""
     try:
-        audit_valid = bool(audit.verify())
+        audit_valid = bool(audit.health() if hasattr(audit, "health") else audit.verify())
     except Exception:
         audit_valid = False
     try:
-        evidence_status = evidence.verify()
+        evidence_status = evidence.health() if hasattr(evidence, "health") else evidence.verify()
         if not isinstance(evidence_status, dict) or not isinstance(evidence_status.get("valid"), bool):
             evidence_status = {"valid": False, "reason": "invalid_verifier_response"}
     except Exception:
@@ -236,6 +242,8 @@ async def assistant_chat(body: ChatIn) -> dict:
 def record_evidence(body: EvidenceIn) -> dict:
     """Record evidence metadata and its content digest; authenticity is not inferred."""
     try:
+        if config.DATABASE_URL and hasattr(evidence, "append_with_audit"):
+            return evidence.append_with_audit(body.model_dump(), audit)
         result = evidence.append(body.model_dump())
         audit.record("evidence.append", {"sequence": result["sequence"], "record_hash": result["record_hash"]})
         return result
@@ -267,7 +275,10 @@ def get_inventory() -> dict:
 
 @app.get("/v1/audit", dependencies=[Depends(auth)])
 def get_audit(limit: int = 50) -> dict:
-    return {"valid": audit.verify(), "entries": audit.entries[-limit:]}
+    try:
+        return {"valid": audit.verify(), "entries": audit.list(limit=limit)}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 for _name, _rel in config.STATIC_SITES.items():
