@@ -45,3 +45,26 @@ Migration 003 leaves `event_json` nullable to permit schema rollout over databas
 After migration 006, grant the runtime role read-only access to identity records: `GRANT SELECT ON omnis.tenant, omnis.principal, omnis.tenant_membership, omnis.api_credential TO omnis_app;`. Do not grant identity-table mutation privileges to the runtime role. The tenant credential lookup is used only by `GET /v1/identity/me`; existing business routes still use the legacy shared token until tenant-scoped data access is implemented.
 
 The application uses a lightweight latest-event audit health probe. Full-chain integrity verification remains available through the audit verification operation and should be run as a deliberate integrity check rather than on every load-balancer probe. Hash chains do not prove source authenticity or actor identity, and cannot detect deletion of a final suffix without an independently retained checkpoint.
+
+
+## Initial tenant provisioning
+
+Use a separate database-owner connection for provisioning; do not give these privileges
+to the runtime role. Configure `OMNIS_PROVISIONING_DATABASE_URL` and the same
+`OMNIS_API_KEY_PEPPER` used by the runtime, then run:
+
+```sh
+cd merged/platform
+python -m omnis.provision_identity \
+  --slug example-tenant \
+  --tenant-name "Example Tenant" \
+  --email owner@example.com \
+  --display-name "Tenant Owner"
+```
+
+The command creates a tenant, its initial owner principal and membership, and one
+API credential in a single transaction. It prints the raw bearer token once after
+commit; copy it directly into a secret manager. The database stores only its keyed
+digest. If the command fails, it does not print the token. The provisioning DSN
+must use a separate owner/provisioning role and must never be configured as the
+application's `OMNIS_DATABASE_URL`.
