@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS omnis.evidence (
     acquisition_method TEXT NOT NULL,
     declared_license TEXT NOT NULL,
     submitted_by TEXT NOT NULL,
+    -- Preserve the exact canonical input values used for the hash chain.
+    -- TIMESTAMPTZ alone cannot preserve the original timezone representation.
+    record_json JSONB NOT NULL,
     previous_hash CHAR(64) NOT NULL,
     record_hash CHAR(64) NOT NULL UNIQUE,
     source_authenticity TEXT NOT NULL DEFAULT 'unverified'
