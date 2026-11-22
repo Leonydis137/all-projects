@@ -190,9 +190,9 @@ def public_key_document() -> dict[str, str]:
 
 def acquire_and_attest(source_uri: str, license_name: str, fetcher_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
     """Fetch one allowlisted source, hash bytes, and sign the canonical fetch statement."""
-    if not isinstance(fetcher_id, str) or not fetcher_id.strip() or len(fetcher_id) > 128 or "\\x00" in fetcher_id:
+    if not isinstance(fetcher_id, str) or not fetcher_id.strip() or len(fetcher_id) > 128 or "\x00" in fetcher_id:
         raise SourceConfigurationError("OMNIS_SOURCE_FETCHER_ID is invalid")
-    if not isinstance(license_name, str) or not license_name.strip() or len(license_name) > 256 or "\\x00" in license_name:
+    if not isinstance(license_name, str) or not license_name.strip() or len(license_name) > 256 or "\x00" in license_name:
         raise SourcePolicyError("declared licence must be a non-empty value of at most 256 characters")
     fetcher_id = fetcher_id.strip()
     license_name = license_name.strip()
