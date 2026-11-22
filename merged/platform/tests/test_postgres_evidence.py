@@ -127,3 +127,21 @@ def test_postgres_evidence_idempotency(postgres_dsn):
     assert retry["record_hash"] == first["record_hash"]
     with pytest.raises(EvidenceValidationError, match="different evidence record"):
         ledger.append({**_record("different"), "idempotency_key": key})
+
+
+def test_postgres_accepts_uppercase_http_scheme(postgres_dsn):
+    from omnis.postgres_evidence import PostgresEvidenceLedger
+
+    record = _record("uppercase-" + uuid4().hex)
+    record["source_uri"] = record["source_uri"].replace("https://", "HTTPS://", 1)
+    appended = PostgresEvidenceLedger(postgres_dsn).append(record)
+    assert appended["source_uri"].startswith("HTTPS://")
+
+
+def test_evidence_validation_rejects_nul_characters():
+    from omnis.evidence import EvidenceValidationError, _validate
+
+    record = _record("nul-" + uuid4().hex)
+    record["submitted_by"] = "bad\\x00value"
+    with pytest.raises(EvidenceValidationError, match="NUL"):
+        _validate(record)
