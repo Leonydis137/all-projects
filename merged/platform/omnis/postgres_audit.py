@@ -109,12 +109,16 @@ class PostgresAuditLog:
         if not isinstance(payload, dict):
             raise ValueError("audit payload must be an object")
         cur.execute("SELECT pg_advisory_xact_lock(hashtext('omnis.audit_event'))")
-        cur.execute("SELECT event_json, event_hash FROM omnis.audit_event ORDER BY sequence DESC LIMIT 1")
+        cur.execute(
+            """SELECT occurred_at, actor, event_type, payload, previous_hash, event_hash, event_json
+               FROM omnis.audit_event ORDER BY sequence DESC LIMIT 1"""
+        )
         previous = cur.fetchone()
         if previous:
-            prior_body = json.loads(previous["event_json"]) if previous["event_json"] else None
-            if not isinstance(prior_body, dict) or not isinstance(prior_body.get("i"), int):
-                raise RuntimeError("audit chain contains a legacy or malformed event")
+            prior_body = self._decode(previous)
+            prior_hash = hashlib.sha256(_canonical(prior_body)).hexdigest()
+            if prior_hash != previous["event_hash"]:
+                raise RuntimeError("audit chain head failed integrity verification")
             index = prior_body["i"] + 1
             previous_hash = previous["event_hash"]
         else:
