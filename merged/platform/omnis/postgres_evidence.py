@@ -7,10 +7,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import os
 from datetime import datetime
 from typing import Any, Callable
 
 from .evidence import EvidenceValidationError, _canonical, _validate
+
+_LOG = logging.getLogger(__name__)
 
 
 class PostgresEvidenceLedger:
@@ -21,24 +25,16 @@ class PostgresEvidenceLedger:
             raise ValueError("OMNIS_DATABASE_URL must be a non-empty PostgreSQL connection string")
         self.dsn = dsn
         self._connect_factory = connect_factory
+        self.verify_timeout_ms = int(os.environ.get("OMNIS_DB_VERIFY_TIMEOUT_MS", "300000"))
+        if self.verify_timeout_ms < 10_000:
+            raise ValueError("OMNIS_DB_VERIFY_TIMEOUT_MS must be at least 10000")
 
-    def _connect(self):
+    def _connect(self, statement_timeout_ms: int = 10_000):
         if self._connect_factory is not None:
             return self._connect_factory()
-        try:
-            import psycopg
-            from psycopg.rows import dict_row
-        except ImportError as exc:
-            raise RuntimeError("PostgreSQL storage requires psycopg; install platform requirements") from exc
-        from psycopg.conninfo import conninfo_to_dict
-        params = conninfo_to_dict(self.dsn)
-        host = (params.get("host") or "").strip()
-        local_hosts = {"localhost", "127.0.0.1", "::1"}
-        # Loopback CI/dev databases may not offer TLS; every non-local host must
-        # authenticate its certificate and hostname to prevent MITM credential theft.
-        sslmode = "disable" if host in local_hosts or host.startswith("/") else "verify-full"
-        return psycopg.connect(self.dsn, row_factory=dict_row, sslmode=sslmode,
-                               connect_timeout=5, options="-c statement_timeout=10000")
+        from psycopg.rows import dict_row
+        from .postgres_connection import connect_postgres
+        return connect_postgres(self.dsn, dict_row, statement_timeout_ms=statement_timeout_ms)
 
     @staticmethod
     def _record(row: dict[str, Any]) -> dict[str, Any]:
@@ -187,6 +183,7 @@ class PostgresEvidenceLedger:
             return {"valid": valid, "checked": 1, "head": row["record_hash"] if valid else None,
                     **({} if valid else {"failed_sequence": row["sequence"], "reason": "hash_mismatch"})}
         except Exception:
+            _LOG.exception("OMNIS evidence health probe failed")
             return {"valid": False, "checked": 0, "reason": "storage_error"}
 
     def health(self) -> dict[str, Any]:
@@ -215,7 +212,7 @@ class PostgresEvidenceLedger:
         previous_hash = "0" * 64
         checked = 0
         try:
-            with self._connect() as db:
+            with self._connect(statement_timeout_ms=self.verify_timeout_ms) as db:
                 with db.cursor() as cur:
                     cur.execute(
                         """SELECT sequence, record_json, previous_hash, record_hash
@@ -242,4 +239,5 @@ class PostgresEvidenceLedger:
                 checked += 1
             return {"valid": True, "checked": checked, "head": previous_hash}
         except Exception:
+            _LOG.exception("OMNIS evidence-ledger verification failed")
             return {"valid": False, "checked": checked, "reason": "storage_error"}
