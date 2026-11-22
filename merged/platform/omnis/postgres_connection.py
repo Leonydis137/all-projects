@@ -5,15 +5,7 @@ import ipaddress
 from typing import Any
 
 
-def connect_postgres(dsn: str, row_factory: Any, *, statement_timeout_ms: int = 10_000):
-    """Connect with verified TLS for remote hosts and bounded database operations."""
-    try:
-        import psycopg
-        from psycopg.conninfo import conninfo_to_dict
-    except ImportError as exc:
-        raise RuntimeError("PostgreSQL storage requires psycopg; install platform requirements") from exc
-
-    params = conninfo_to_dict(dsn)
+def _sslmode_for_params(params: dict[str, str]) -> str:
     hosts = [item.strip().lower() for item in (params.get("host") or "").split(",") if item.strip()]
     hostaddrs = [item.strip() for item in (params.get("hostaddr") or "").split(",") if item.strip()]
     local_names = {"localhost"}
@@ -24,22 +16,33 @@ def connect_postgres(dsn: str, row_factory: Any, *, statement_timeout_ms: int = 
         except ValueError:
             return False
 
-    # No host/hostaddr means libpq's local Unix-socket default.
     if not hosts and not hostaddrs:
-        local = True
-    else:
-        host_is_local = bool(hosts) and all(
-            host in local_names or host.startswith("/") or is_loopback(host)
-            for host in hosts
-        )
-        addresses_are_local = all(is_loopback(address) for address in hostaddrs)
-        local = host_is_local and addresses_are_local
+        return "disable"  # libpq's default local Unix socket
+    host_is_local = bool(hosts) and all(
+        host in local_names or host.startswith("/") or is_loopback(host)
+        for host in hosts
+    )
+    addresses_are_local = all(is_loopback(address) for address in hostaddrs)
+    local = host_is_local and addresses_are_local
+    if local:
+        return "disable"
 
-    # A remote hostaddr without a DNS host cannot be authenticated by hostname.
-    if not local and not hosts:
+    if not hosts:
         raise ValueError("remote PostgreSQL DSNs must include a hostname for TLS verification")
+    if hostaddrs and host_is_local:
+        raise ValueError("a remote hostaddr cannot be paired with a loopback PostgreSQL hostname")
+    return "verify-full"
 
-    sslmode = "disable" if local else "verify-full"
+
+def connect_postgres(dsn: str, row_factory: Any, *, statement_timeout_ms: int = 10_000):
+    """Connect with verified TLS for remote hosts and bounded database operations."""
+    try:
+        import psycopg
+        from psycopg.conninfo import conninfo_to_dict
+    except ImportError as exc:
+        raise RuntimeError("PostgreSQL storage requires psycopg; install platform requirements") from exc
+
+    sslmode = _sslmode_for_params(conninfo_to_dict(dsn))
     timeout = int(statement_timeout_ms)
     if timeout < 0:
         raise ValueError("statement timeout must be non-negative")
