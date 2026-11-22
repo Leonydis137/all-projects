@@ -55,3 +55,9 @@ endpoints yet. Those endpoints still use the legacy shared token because the
 evidence and other shared stores have not completed tenant-level row isolation.
 Enabling tenant credentials across those routes before scoping every read, write,
 idempotency key, and audit query would create a cross-tenant data exposure risk.
+
+
+Tenant evidence uses a separate PostgreSQL table and adapter. It has forced row-level
+security, per-tenant idempotency, tenant-local hash chains, and principal-attributed
+audit events. The original global evidence ledger remains separate for legacy
+single-tenant callers; no historical evidence is silently assigned to a tenant.
