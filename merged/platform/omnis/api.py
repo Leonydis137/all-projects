@@ -18,6 +18,7 @@ from .postgres_audit import AuditIntegrityError, PostgresAuditLog
 from .decision import Rule, default_engine
 from .evidence import EvidenceLedger, EvidenceValidationError
 from .postgres_evidence import EvidenceIntegrityError, PostgresEvidenceLedger
+from .postgres_tenant_evidence import PostgresTenantEvidenceLedger
 from .protocols import AEON, Context
 from .recommend import Recommender
 from .identity import IdentityUnavailable, InvalidCredential, Principal, authenticate_api_key
@@ -37,6 +38,7 @@ audit = (PostgresAuditLog(config.DATABASE_URL, actor=os.environ.get("OMNIS_AUDIT
          if config.DATABASE_URL else memory_audit)
 evidence = (PostgresEvidenceLedger(config.DATABASE_URL, audit_log=audit) if config.DATABASE_URL else
             EvidenceLedger(os.environ.get("OMNIS_EVIDENCE_DB", str(config.PLATFORM_DIR / "var" / "evidence.sqlite3"))))
+tenant_evidence = PostgresTenantEvidenceLedger(config.DATABASE_URL) if config.DATABASE_URL else None
 STATIC = Path(__file__).parent / "static"
 _HEALTH_CACHE_TTL_SECONDS = 2.0
 _health_lock = threading.Lock()
@@ -59,7 +61,12 @@ async def audit_api_requests(request: Request, call_next):
     # until all resource stores enforce tenant scoping.
     principal = None
     identity_error = None
-    if path == "/v1/identity/me":
+    tenant_auth_paths = {
+        "/v1/identity/me",
+        "/v1/tenant/evidence",
+        "/v1/tenant/evidence/verify",
+    }
+    if path in tenant_auth_paths:
         authorization = request.headers.get("authorization", "")
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() != "bearer" or not token:
@@ -124,11 +131,15 @@ def tenant_identity(request: Request) -> Principal:
     return principal
 
 
-def gated(kind: str, attrs: Optional[dict] = None) -> dict:
+def gated(kind: str, attrs: Optional[dict] = None, actor: Optional[str] = None) -> dict:
     """Run an action through the COVENANT gate and audit it."""
     action = governance.stamp({"type": kind, **(attrs or {})}, mission="PRIMARY_MISSION", auditable=True, data_provenance=True)
     verdict = governance.evaluate(action)
-    audit.record("govern", {"action": kind, "allowed": verdict["allowed"], "violations": verdict["violations"]})
+    payload = {"action": kind, "allowed": verdict["allowed"], "violations": verdict["violations"]}
+    if actor:
+        audit.record("govern", payload, actor=actor)
+    else:
+        audit.record("govern", payload)
     if not verdict["allowed"]:
         raise HTTPException(403, {"blocked_by": "covenant", "violations": verdict["violations"]})
     return verdict
@@ -209,6 +220,14 @@ class SourceFetchIn(BaseModel):
     source_uri: str = Field(min_length=1, max_length=2048)
     license: str = Field(default="unspecified", min_length=1, max_length=256)
 
+class TenantEvidenceIn(BaseModel):
+    source_uri: str
+    content_sha256: str
+    acquired_at: str
+    acquisition_method: str
+    license: str
+    idempotency_key: Optional[str] = None
+
 
 @app.get("/health")
 def health():
@@ -261,6 +280,54 @@ def get_identity(principal: Principal = Depends(tenant_identity)) -> dict:
         "permissions": sorted(principal.permissions),
         "credential_prefix": principal.credential_prefix,
     }
+
+
+@app.post("/v1/tenant/evidence")
+def append_tenant_evidence(
+    body: TenantEvidenceIn,
+    principal: Principal = Depends(tenant_identity),
+) -> dict:
+    if not principal.allows("evidence:write"):
+        raise HTTPException(403, "tenant role lacks evidence:write")
+    if tenant_evidence is None:
+        raise HTTPException(503, "PostgreSQL tenant evidence is not configured")
+    try:
+        gated("tenant.evidence.append", {"tenant_id": principal.tenant_id}, actor=principal.principal_id)
+        stored = tenant_evidence.append_with_audit(
+            body.model_dump(exclude_none=True), principal.tenant_id, principal.principal_id, audit
+        )
+        return {"record": stored}
+    except EvidenceIntegrityError:
+        return JSONResponse(status_code=503, content={"detail": "tenant_evidence_integrity_error"})
+    except EvidenceValidationError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/v1/tenant/evidence")
+def list_tenant_evidence(
+    limit: int = 100,
+    before: int | None = None,
+    principal: Principal = Depends(tenant_identity),
+) -> dict:
+    if not principal.allows("evidence:read"):
+        raise HTTPException(403, "tenant role lacks evidence:read")
+    if tenant_evidence is None:
+        raise HTTPException(503, "PostgreSQL tenant evidence is not configured")
+    try:
+        return {"records": tenant_evidence.list(principal.tenant_id, limit=limit, before=before)}
+    except EvidenceIntegrityError:
+        return JSONResponse(status_code=503, content={"detail": "tenant_evidence_integrity_error"})
+    except EvidenceValidationError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/v1/tenant/evidence/verify")
+def verify_tenant_evidence(principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("evidence:read"):
+        raise HTTPException(403, "tenant role lacks evidence:read")
+    if tenant_evidence is None:
+        raise HTTPException(503, "PostgreSQL tenant evidence is not configured")
+    return tenant_evidence.verify(principal.tenant_id)
 
 
 @app.get("/v1/catalog", dependencies=[Depends(auth)])
