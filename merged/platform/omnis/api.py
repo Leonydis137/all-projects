@@ -298,7 +298,12 @@ def get_inventory() -> dict:
 @app.get("/v1/audit", dependencies=[Depends(auth)])
 def get_audit(limit: int = 50) -> dict:
     try:
-        verification = audit.verify_status() if hasattr(audit, "verify_status") else {"valid": audit.verify()}
+        if hasattr(audit, "snapshot"):
+            result = audit.snapshot(limit=limit)
+            verification = result["verification"]
+            return {"valid": verification["valid"], "verification": verification,
+                    "entries": result["entries"]}
+        verification = {"valid": audit.verify()}
         return {"valid": verification["valid"], "verification": verification,
                 "entries": audit.list(limit=limit)}
     except ValueError as exc:
