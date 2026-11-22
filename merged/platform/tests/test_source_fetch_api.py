@@ -51,9 +51,9 @@ def test_source_fetch_is_governed_and_persists_signed_record(monkeypatch, client
     assert response.status_code == 200
     assert response.json()["evidence"]["sequence"] == 1
     assert response.json()["source_authenticity"] == "not_established"
-    assert calls[0] == ("govern", "source.fetch")
-    assert calls[1][0] == "append"
-    assert calls[2][0] == "evidence.append"
+    kinds = [item[0] for item in calls]
+    assert kinds.index("govern") < kinds.index("append") < kinds.index("evidence.append")
+    assert "http.request.started" in kinds and "http.request.completed" in kinds
 
 
 def test_source_fetch_does_not_access_network_when_covenant_blocks(monkeypatch, client):
