@@ -22,9 +22,9 @@ class AuditLog:
     def verify(self) -> bool:
         with self._lock:
             prev = "0" * 64
-            for entry in self.entries:
+            for index, entry in enumerate(self.entries):
                 body = {key: value for key, value in entry.items() if key != "hash"}
-                if (body["prev"] != prev or
+                if (body.get("i") != index or body["prev"] != prev or
                         hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest() != entry["hash"]):
                     return False
                 prev = entry["hash"]
