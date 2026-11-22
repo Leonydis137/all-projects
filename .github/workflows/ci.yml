@@ -1,0 +1,33 @@
+name: CI
+on:
+  push: { branches: [main, unified] }
+  pull_request:
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          ps=[p for p in json.load(open('projects.json'))['projects'] if p['kind'] in ('node','python')]
+          print('matrix='+json.dumps({'include':ps}))
+          PY
+  test:
+    needs: detect
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: scripts/projects.sh install ${{ matrix.path }}
+      - run: scripts/projects.sh test ${{ matrix.path }}

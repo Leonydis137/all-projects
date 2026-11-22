@@ -1,45 +1,22 @@
 # all-projects
 
-Monorepo of all projects by Juan-Louw Greyling (juanlouw.greyling@gmail.com).
+Unified monorepo of all projects by **Juan-Louw Greyling** (juanlouw.greyling@gmail.com).
+Full history of every original repo is preserved.
 
-- [`CodeEvolveAI`](./CodeEvolveAI/)
-- [`Codegenie`](./Codegenie/)
-- [`Combined`](./Combined/)
-- [`Covenant-Enterprise`](./Covenant-Enterprise/)
-- [`Covenant-ai`](./Covenant-ai/)
-- [`Covenant`](./Covenant/)
-- [`Covenant_Enterprise_V5.0`](./Covenant_Enterprise_V5.0/)
-- [`Discussion_Bot`](./Discussion_Bot/)
-- [`EAON-AI-Engine`](./EAON-AI-Engine/)
-- [`GCD-PvsNP`](./GCD-PvsNP/)
-- [`Jacobsbay-Accomodation`](./Jacobsbay-Accomodation/)
-- [`Nexus`](./Nexus/)
-- [`PlayGround`](./PlayGround/)
-- [`Predictor`](./Predictor/)
-- [`Project-Genesis`](./Project-Genesis/)
-- [`Quantum-Flow-OS`](./Quantum-Flow-OS/)
-- [`SA-Threads---Premier-Online-Fashion`](./SA-Threads---Premier-Online-Fashion/)
-- [`Site-Mirror-Studio`](./Site-Mirror-Studio/)
-- [`Synapse-OS`](./Synapse-OS/)
-- [`autonomous-AI`](./autonomous-AI/)
-- [`blank-app`](./blank-app/)
-- [`chatgpt-android-os`](./chatgpt-android-os/)
-- [`combined-repositories`](./combined-repositories/)
-- [`hybrid-sat-solver-portal`](./hybrid-sat-solver-portal/)
-- [`jacobsbayaccomodationtemp.io`](./jacobsbayaccomodationtemp.io/)
-- [`juan-louw.greyling.github.io`](./juan-louw.greyling.github.io/)
-- [`neural_sovereign`](./neural_sovereign/)
-- [`omnigpt-mobile`](./omnigpt-mobile/)
-- [`omnigpt-web`](./omnigpt-web/)
-- [`self-improving-code-analyzer-v10`](./self-improving-code-analyzer-v10/)
-- [`self-improving-code-analyzer-v11`](./self-improving-code-analyzer-v11/)
-- [`self-improving-code-analyzer-v12`](./self-improving-code-analyzer-v12/)
-- [`self-improving-code-analyzer-v13`](./self-improving-code-analyzer-v13/)
-- [`self-improving-code-analyzer-v14`](./self-improving-code-analyzer-v14/)
-- [`self-improving-code-analyzer-v9`](./self-improving-code-analyzer-v9/)
-- [`solution_to_p-np`](./solution_to_p-np/)
-- [`topsecret`](./topsecret/)
-- [`uuma`](./uuma/)
-- [`vantage-ars`](./vantage-ars/)
-- [`vantage`](./vantage/)
-- [`vite-react-wmjavfy2`](./vite-react-wmjavfy2/)
+| Area | What lives here |
+|---|---|
+| `apps/web` | React/TS web apps: Vantage-ARS, OmniGPT, Quantum Flow OS, Neural Sovereign, Project Genesis, CodeEvolveAI, Site Mirror Studio, SA Threads, SAT portal |
+| `apps/sites` | Static sites: portfolio, Jacobs Bay |
+| `apps/mobile` | Android (Kotlin) and React Native/Expo apps |
+| `services` | Python services: COVENANT (constitutional multi-agent platform), AEON engine, autonomous agent, Codegenie, chatbot |
+| `research` | P vs NP / circuit lower bounds / UUMA proof-of-work research |
+| `tools` | OMGithub automation, self-improving code analyzer |
+| `archive` | Superseded variants, templates and stubs (kept for reference) |
+
+## Use
+```bash
+make list                        # all projects + type
+make install P=services/covenant # install one project
+make test                        # test everything (slow)
+```
+`projects.json` is the machine-readable catalog; `docs/MIGRATION.md` maps old repo names to new paths.
