@@ -61,7 +61,7 @@ def test_dns_resolution_rejects_private_or_mixed_answers(monkeypatch):
         source_fetch._resolve_public_ips("docs.example.org")
 
 
-def test_fetch_pins_the_validated_ip_and_rejects_oversized_body(monkeypatch):
+def test_fetch_pins_validated_ip_and_requests_identity_encoding(monkeypatch):
     calls = {}
 
     class Response:
@@ -103,7 +103,7 @@ def test_fetch_rejects_redirects_and_compressed_responses(monkeypatch):
         status = 302
 
         def getheader(self, name, default=None):
-            return {"Location": "https://evil.example/"} .get(name, default)
+            return {"Location": "https://evil.example/"}.get(name, default)
 
         def read(self, amount):
             return b""
