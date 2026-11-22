@@ -111,14 +111,25 @@ class PostgresAuditLog:
         cur.execute("SELECT pg_advisory_xact_lock(hashtext('omnis.audit_event'))")
         cur.execute(
             """SELECT occurred_at, actor, event_type, payload, previous_hash, event_hash, event_json
-               FROM omnis.audit_event ORDER BY sequence DESC LIMIT 1"""
+               FROM omnis.audit_event ORDER BY sequence DESC LIMIT 2"""
         )
-        previous = cur.fetchone()
-        if previous:
+        prior_rows = cur.fetchall()
+        if prior_rows:
+            previous = prior_rows[0]
             prior_body = self._decode(previous)
             prior_hash = hashlib.sha256(_canonical(prior_body)).hexdigest()
             if prior_hash != previous["event_hash"]:
                 raise RuntimeError("audit chain head failed integrity verification")
+            if len(prior_rows) > 1:
+                predecessor = prior_rows[1]
+                predecessor_body = self._decode(predecessor)
+                predecessor_hash = hashlib.sha256(_canonical(predecessor_body)).hexdigest()
+                if (predecessor_hash != predecessor["event_hash"]
+                        or prior_body["prev"] != predecessor["event_hash"]
+                        or prior_body["i"] != predecessor_body["i"] + 1):
+                    raise RuntimeError("audit chain predecessor failed integrity verification")
+            elif prior_body["i"] != 0 or prior_body["prev"] != _ZERO_HASH:
+                raise RuntimeError("audit chain first event has an invalid predecessor")
             index = prior_body["i"] + 1
             previous_hash = previous["event_hash"]
         else:
