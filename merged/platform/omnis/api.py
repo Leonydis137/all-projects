@@ -80,6 +80,8 @@ async def audit_api_requests(request: Request, call_next):
         request.state.identity_error = identity_error
 
     event = {"method": request.method, "path": path}
+    if principal is not None:
+        event["tenant_id"] = principal.tenant_id
     actor = principal.principal_id if principal is not None else None
     try:
         if actor:
