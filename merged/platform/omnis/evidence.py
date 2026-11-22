@@ -5,6 +5,7 @@ Source authenticity requires independent retrieval or cryptographic signatures.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -83,6 +84,26 @@ def _validate(record: dict[str, Any]) -> dict[str, Any]:
             raise EvidenceValidationError("provenance_attestation has an invalid structure")
         if statement.get("content_sha256") != clean["content_sha256"] or statement.get("source_uri") != clean["source_uri"]:
             raise EvidenceValidationError("provenance_attestation does not match the evidence source and digest")
+        try:
+            public_bytes = base64.b64decode(
+                attestation["public_key_b64"] + "=" * (-len(attestation["public_key_b64"]) % 4),
+                altchars=b"-_", validate=True,
+            )
+            signature = base64.b64decode(
+                attestation["signature_b64"] + "=" * (-len(attestation["signature_b64"]) % 4),
+                altchars=b"-_", validate=True,
+            )
+            if len(public_bytes) != 32 or len(signature) != 64:
+                raise ValueError("invalid Ed25519 key or signature length")
+            if hashlib.sha256(public_bytes).hexdigest() != attestation["key_id"]:
+                raise ValueError("attestation key fingerprint mismatch")
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+            canonical_statement = json.dumps(
+                statement, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+            ).encode("utf-8")
+            Ed25519PublicKey.from_public_bytes(public_bytes).verify(signature, canonical_statement)
+        except Exception as exc:
+            raise EvidenceValidationError("provenance_attestation signature is invalid") from exc
         clean["provenance_attestation"] = json.loads(encoded_attestation)
     return clean
 
