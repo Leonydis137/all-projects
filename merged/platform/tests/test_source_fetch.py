@@ -182,3 +182,51 @@ def test_signed_attestation_is_part_of_evidence_hash_chain(tmp_path, monkeypatch
     stored = ledger.append(record)
     assert stored["provenance_attestation"] == record["provenance_attestation"]
     assert ledger.verify()["valid"] is True
+
+
+@pytest.mark.parametrize(
+    "headers, expected",
+    [
+        ({"Content-Encoding": "gzip", "Content-Length": "4"}, source_fetch.SourcePolicyError),
+        ({"Content-Encoding": "identity", "Content-Length": "11"}, source_fetch.SourcePolicyError),
+    ],
+)
+def test_fetch_rejects_compression_and_declared_oversize(monkeypatch, headers, expected):
+    class Response:
+        status = 200
+
+        def getheader(self, name, default=None):
+            return headers.get(name, default)
+
+        def read(self, amount):
+            raise AssertionError("body must not be read after rejected headers")
+
+    class Connection:
+        def __init__(self, *args):
+            pass
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(source_fetch, "_PinnedHTTPSConnection", Connection)
+    with pytest.raises(expected):
+        source_fetch._fetch_pinned("docs.example.org", "/a", "8.8.8.8", 10)
+
+
+def test_attestation_rejects_tampered_signature(tmp_path, monkeypatch):
+    _private_key_env(monkeypatch)
+    monkeypatch.setenv("OMNIS_SOURCE_ALLOWLIST", "docs.example.org")
+    monkeypatch.setattr(source_fetch, "_resolve_public_ips", lambda host: ["8.8.8.8"])
+    monkeypatch.setattr(source_fetch, "_fetch_pinned", lambda *args: (b"source", "text/plain"))
+    record, _ = source_fetch.acquire_and_attest(
+        "https://docs.example.org/source", "unknown", "test-fetcher"
+    )
+    record["provenance_attestation"]["signature_b64"] = base64.urlsafe_b64encode(b"x" * 64).decode().rstrip("=")
+    with pytest.raises(EvidenceValidationError, match="signature is invalid"):
+        _validate(record)
