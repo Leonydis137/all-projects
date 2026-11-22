@@ -73,3 +73,20 @@ def test_json_payload_comparison_is_type_sensitive():
     assert _json_equal({"value": 1}, {"value": 1})
     assert not _json_equal({"value": 1}, {"value": True})
     assert not _json_equal({"value": 0}, {"value": False})
+
+
+def test_postgres_audit_decode_handles_non_utc_session_timezone(postgres_audit_dsn):
+    import psycopg
+    from psycopg.rows import dict_row
+    from omnis.postgres_audit import PostgresAuditLog
+
+    log = PostgresAuditLog(postgres_audit_dsn)
+    log.record("test.timezone", {"marker": uuid4().hex})
+    with psycopg.connect(postgres_audit_dsn, row_factory=dict_row) as db:
+        db.execute("SET TIME ZONE 'America/Los_Angeles'")
+        row = db.execute(
+            """SELECT occurred_at, actor, event_type, payload, previous_hash, event_hash, event_json
+               FROM omnis.audit_event ORDER BY sequence DESC LIMIT 1"""
+        ).fetchone()
+    event = log._decode(row)
+    assert event["kind"] == "test.timezone"
