@@ -15,7 +15,11 @@ from typing import Any, Callable
 from .evidence import EvidenceValidationError, _canonical, _validate
 
 
-class EvidenceColumnMismatch(ValueError):
+class EvidenceIntegrityError(ValueError):
+    """Stored evidence data is malformed or inconsistent with its integrity commitment."""
+
+
+class EvidenceColumnMismatch(EvidenceIntegrityError):
     """Denormalized SQL columns disagree with the canonical evidence JSON."""
 
 _LOG = logging.getLogger(__name__)
@@ -44,10 +48,13 @@ class PostgresEvidenceLedger:
     @staticmethod
     def _record(row: dict[str, Any]) -> dict[str, Any]:
         payload = row["record_json"]
-        if isinstance(payload, str):
-            payload = json.loads(payload)
+        try:
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+        except (TypeError, ValueError) as exc:
+            raise EvidenceIntegrityError("stored evidence record is malformed") from exc
         if not isinstance(payload, dict):
-            raise EvidenceValidationError("stored evidence record is malformed")
+            raise EvidenceIntegrityError("stored evidence record is malformed")
         expected_fields = {
             "source_uri": payload.get("source_uri"),
             "content_sha256": payload.get("content_sha256"),
@@ -255,6 +262,9 @@ class PostgresEvidenceLedger:
                 except EvidenceColumnMismatch:
                     return {"valid": False, "checked": checked,
                             "failed_sequence": row["sequence"], "reason": "column_mismatch"}
+                except EvidenceIntegrityError:
+                    return {"valid": False, "checked": checked,
+                            "failed_sequence": row["sequence"], "reason": "malformed_record"}
                 except (TypeError, ValueError, KeyError):
                     return {"valid": False, "checked": checked,
                             "failed_sequence": row["sequence"], "reason": "malformed_record"}
