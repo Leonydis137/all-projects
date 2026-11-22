@@ -32,6 +32,8 @@ def _validate(record: dict[str, Any]) -> dict[str, Any]:
     missing = [key for key in required if not isinstance(record.get(key), str) or not record[key].strip()]
     if missing:
         raise EvidenceValidationError("required non-empty fields: " + ", ".join(missing))
+    if any("\x00" in record[key] for key in required):
+        raise EvidenceValidationError("evidence fields must not contain NUL characters")
     if not _SHA256.fullmatch(record["content_sha256"]):
         raise EvidenceValidationError("content_sha256 must be a lowercase SHA-256 hex digest")
     parsed = urlsplit(record["source_uri"])
@@ -43,7 +45,15 @@ def _validate(record: dict[str, Any]) -> dict[str, Any]:
         raise EvidenceValidationError("acquired_at must be ISO-8601") from exc
     if stamp.tzinfo is None:
         raise EvidenceValidationError("acquired_at must include a timezone")
-    return {key: record[key].strip() for key in required}
+    clean = {key: record[key].strip() for key in required}
+    idempotency_key = record.get("idempotency_key")
+    if idempotency_key is not None:
+        if not isinstance(idempotency_key, str) or not idempotency_key.strip():
+            raise EvidenceValidationError("idempotency_key must be a non-empty string when provided")
+        if "\x00" in idempotency_key:
+            raise EvidenceValidationError("idempotency_key must not contain NUL characters")
+        clean["idempotency_key"] = idempotency_key.strip()
+    return clean
 
 
 class EvidenceLedger:
@@ -60,13 +70,18 @@ class EvidenceLedger:
                     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
                     record_json TEXT NOT NULL,
                     previous_hash TEXT NOT NULL,
-                    record_hash TEXT NOT NULL UNIQUE
+                    record_hash TEXT NOT NULL UNIQUE,
+                    idempotency_key TEXT UNIQUE
                 );
                 CREATE TRIGGER IF NOT EXISTS evidence_no_update
                 BEFORE UPDATE ON evidence BEGIN SELECT RAISE(ABORT, 'evidence is append-only'); END;
                 CREATE TRIGGER IF NOT EXISTS evidence_no_delete
                 BEFORE DELETE ON evidence BEGIN SELECT RAISE(ABORT, 'evidence is append-only'); END;
             """)
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(evidence)")}
+            if "idempotency_key" not in columns:
+                db.execute("ALTER TABLE evidence ADD COLUMN idempotency_key TEXT")
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS evidence_idempotency_key_uq ON evidence(idempotency_key) WHERE idempotency_key IS NOT NULL")
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(str(self.path), timeout=15)
@@ -77,13 +92,22 @@ class EvidenceLedger:
         clean = _validate(record)
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            if clean.get("idempotency_key"):
+                existing = db.execute("SELECT * FROM evidence WHERE idempotency_key = ?", (clean["idempotency_key"],)).fetchone()
+                if existing:
+                    stored = json.loads(existing["record_json"])
+                    if _canonical(stored) != _canonical(clean):
+                        raise EvidenceValidationError("idempotency_key was already used for a different evidence record")
+                    return {"sequence": existing["sequence"], **stored,
+                            "previous_hash": existing["previous_hash"], "record_hash": existing["record_hash"],
+                            "source_authenticity": "unverified"}
             previous = db.execute("SELECT record_hash FROM evidence ORDER BY sequence DESC LIMIT 1").fetchone()
             previous_hash = previous["record_hash"] if previous else "0" * 64
             payload = {"record": clean, "previous_hash": previous_hash}
             digest = hashlib.sha256(_canonical(payload)).hexdigest()
             cursor = db.execute(
-                "INSERT INTO evidence(record_json, previous_hash, record_hash) VALUES (?, ?, ?)",
-                (json.dumps(clean, sort_keys=True), previous_hash, digest),
+                "INSERT INTO evidence(record_json, previous_hash, record_hash, idempotency_key) VALUES (?, ?, ?, ?)",
+                (json.dumps(clean, sort_keys=True), previous_hash, digest, clean.get("idempotency_key")),
             )
             sequence = cursor.lastrowid
         return {"sequence": sequence, **clean, "previous_hash": previous_hash,
@@ -112,6 +136,23 @@ class EvidenceLedger:
                            "previous_hash": row["previous_hash"], "record_hash": row["record_hash"],
                            "source_authenticity": "unverified"})
         return result
+
+    def health(self) -> dict[str, Any]:
+        """Bounded latest-record probe; full-chain verification remains explicit."""
+        try:
+            with self._connect() as db:
+                row = db.execute("SELECT * FROM evidence ORDER BY sequence DESC LIMIT 1").fetchone()
+            if row is None:
+                return {"valid": True, "checked": 0, "head": "0" * 64}
+            record = json.loads(row["record_json"])
+            if not isinstance(record, dict):
+                raise ValueError("record is not an object")
+            expected = hashlib.sha256(_canonical({"record": record, "previous_hash": row["previous_hash"]})).hexdigest()
+            valid = expected == row["record_hash"]
+            return {"valid": valid, "checked": 1, "head": row["record_hash"] if valid else None,
+                    **({} if valid else {"failed_sequence": row["sequence"], "reason": "hash_mismatch"})}
+        except (OSError, sqlite3.Error, TypeError, ValueError):
+            return {"valid": False, "checked": 0, "reason": "storage_error"}
 
     def verify(self) -> dict[str, Any]:
         previous_hash = "0" * 64
