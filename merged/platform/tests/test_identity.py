@@ -176,3 +176,68 @@ def test_identity_endpoint_rejects_missing_tenant_header():
         headers={"Authorization": f"Bearer {TOKEN}"},
     )
     assert response.status_code == 401
+
+
+def test_tenant_evidence_routes_enforce_role_and_tenant_context(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api
+    from omnis.audit import AuditLog
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    operator = Principal(
+        tenant_id=tenant, principal_id="1a2b3c4d-5e6f-4789-8abc-123456789abc",
+        email="operator@example.test", display_name="Operator", role="operator",
+        credential_prefix=TOKEN[:32],
+    )
+    reader = Principal(
+        tenant_id=tenant, principal_id="2a2b3c4d-5e6f-4789-8abc-123456789abc",
+        email="reader@example.test", display_name="Reader", role="reader",
+        credential_prefix=TOKEN[:32],
+    )
+
+    class TenantStore:
+        def __init__(self):
+            self.append_args = None
+
+        def append_with_audit(self, record, tenant_id, actor_id, audit):
+            self.append_args = (record, tenant_id, actor_id)
+            return {"sequence": 1, "tenant_id": tenant_id, **record, "submitted_by": actor_id}
+
+        def list(self, tenant_id, limit=100, before=None):
+            return [{"tenant_id": tenant_id, "sequence": 1}]
+
+        def verify(self, tenant_id):
+            return {"valid": True, "checked": 1, "tenant_id": tenant_id}
+
+    store = TenantStore()
+    test_audit = AuditLog()
+    monkeypatch.setattr(api, "tenant_evidence", store)
+    monkeypatch.setattr(api, "audit", test_audit)
+    current = {"principal": operator}
+    monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: current["principal"])
+    client = TestClient(api.app)
+    headers = {"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant}
+
+    denied = client.post("/v1/tenant/evidence", headers=headers, json={
+        "source_uri": "https://example.test/item",
+        "content_sha256": "a" * 64,
+        "acquired_at": "2026-11-22T10:00:00Z",
+        "acquisition_method": "test",
+        "license": "unknown",
+    })
+    assert denied.status_code == 200
+    assert store.append_args[1:] == (tenant, operator.principal_id)
+
+    current["principal"] = reader
+    forbidden = client.post("/v1/tenant/evidence", headers=headers, json={
+        "source_uri": "https://example.test/reader",
+        "content_sha256": "b" * 64,
+        "acquired_at": "2026-11-22T10:00:00Z",
+        "acquisition_method": "test",
+        "license": "unknown",
+    })
+    assert forbidden.status_code == 403
+    listed = client.get("/v1/tenant/evidence", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["records"][0]["tenant_id"] == tenant
+    assert test_audit.verify()
