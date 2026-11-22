@@ -31,7 +31,12 @@ OMNIS is the integration layer for the source projects in this repository. The m
 - Request lifecycle events record method, path, and status only; they do not copy request bodies, query strings, or bearer tokens into the audit trail.
 - Hash integrity verifies retained records; it does not prove source authenticity or actor identity, and cannot detect deletion of a final suffix without an independently retained checkpoint.
 
-The evidence verification endpoint checks ledger integrity only. Source authenticity remains explicitly unverified until an independent fetcher, signature, or trusted connector validates it.
+The evidence verification endpoint checks ledger integrity only. Source authenticity remains explicitly unverified unless an independently trusted publisher identity/signature is validated.
+
+- The controlled HTTPS acquisition connector is available at `POST /v1/source/fetch`. It requires exact-host allowlisting, public-IP DNS validation with the selected address pinned to the TLS socket, verified TLS, no redirects, no URL query/fragment or credentials, an 8-second timeout, and a 2 MiB response limit.
+- Each acquired record includes an Ed25519-signed canonical observation of the fetch and content digest. The attestation is itself included in the SQLite/PostgreSQL evidence hash chain and is cryptographically checked before append.
+- The connector stores the digest and attestation, not the fetched body. Its signature identifies an OMNIS fetch observation only; it is not a publisher signature and does not validate source claims or caller-declared licensing. The evidence status remains `unverified` / `not_established`.
+- The signing public key is exposed at `GET /v1/source/attestation-key`; clients must pin its fingerprint out-of-band. The private key is configured only through the deployment secret store.
 
 ## Research quality gate
 
@@ -47,7 +52,8 @@ No claim of a P-vs-NP resolution, new complexity lower bound, or Nobel-level dis
 
 ## Next integration stages
 
-- Add independent source acquisition connectors with strict outbound-network policy and signed provenance attestations; never label a platform signature as independent source authenticity.
+- Add publisher-side signature and identity verification (for example, trusted document signatures or signed release metadata); keep it distinct from the platform's fetch-observation signature.
+- Add a durable trust registry for pinned source-signing keys, key revocation, and rotation history.
 - Add PostgreSQL-backed identity, tenancy, permissions, and event processing.
 - Split long-running research and agent workloads into isolated workers.
 - Integrate each source project only after its own build, tests, licence, secrets, and runtime contract are audited.
