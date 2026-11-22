@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 from typing import Any
 
 
@@ -17,18 +18,24 @@ def _sslmode_for_params(params: dict[str, str]) -> str:
             return False
 
     if not hosts and not hostaddrs:
-        return "disable"  # libpq's default local Unix socket
-    host_is_local = bool(hosts) and all(
+        # libpq may silently resolve hostless DSNs through environment variables or
+        # service files. Refuse those ambiguous cases rather than guessing "local".
+        if params.get("service") or any(os.environ.get(name) for name in ("PGSERVICE", "PGHOST", "PGHOSTADDR")):
+            raise ValueError("hostless PostgreSQL DSNs with libpq service/environment overrides are unsupported")
+        return "disable"  # unambiguous libpq default local Unix socket
+
+    addresses_are_local = all(is_loopback(address) for address in hostaddrs)
+    if not hosts:
+        if hostaddrs and addresses_are_local:
+            return "disable"
+        raise ValueError("remote PostgreSQL DSNs must include a hostname for TLS verification")
+
+    host_is_local = all(
         host in local_names or host.startswith("/") or is_loopback(host)
         for host in hosts
     )
-    addresses_are_local = all(is_loopback(address) for address in hostaddrs)
-    local = host_is_local and addresses_are_local
-    if local:
+    if host_is_local and addresses_are_local:
         return "disable"
-
-    if not hosts:
-        raise ValueError("remote PostgreSQL DSNs must include a hostname for TLS verification")
     if hostaddrs and host_is_local:
         raise ValueError("a remote hostaddr cannot be paired with a loopback PostgreSQL hostname")
     return "verify-full"
