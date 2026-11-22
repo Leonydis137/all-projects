@@ -107,7 +107,7 @@ def test_evidence_and_audit_commit_atomically(postgres_dsn):
     with pytest.raises(RuntimeError, match="simulated audit failure"):
         ledger.append_with_audit(_record(marker), FailingAudit())
     with psycopg.connect(postgres_dsn) as db:
-        after_failure = db.execute("SELECT count(*) AS n FROM omnis.evidence").fetchone()["n"]
+        after_failure = db.execute("SELECT count(*) AS n FROM omnis.evidence").fetchone()[0]
     assert after_failure == before
 
     appended = ledger.append_with_audit(_record(marker), audit)
