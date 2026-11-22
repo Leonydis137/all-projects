@@ -301,8 +301,11 @@ def get_audit(limit: int = 50) -> dict:
         if hasattr(audit, "snapshot"):
             result = audit.snapshot(limit=limit)
             verification = result["verification"]
-            return {"valid": verification["valid"], "verification": verification,
-                    "entries": result["entries"]}
+            payload = {"valid": verification["valid"], "verification": verification,
+                       "entries": result["entries"]}
+            if not verification["valid"]:
+                return JSONResponse(status_code=503, content=payload)
+            return payload
         verification = {"valid": audit.verify()}
         return {"valid": verification["valid"], "verification": verification,
                 "entries": audit.list(limit=limit)}
