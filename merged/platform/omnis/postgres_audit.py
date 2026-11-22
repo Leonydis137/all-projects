@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -35,22 +36,16 @@ class PostgresAuditLog:
         self.dsn = dsn
         self.actor = actor.strip()
         self._connect_factory = connect_factory
+        self.verify_timeout_ms = int(os.environ.get("OMNIS_DB_VERIFY_TIMEOUT_MS", "300000"))
+        if self.verify_timeout_ms < 10_000:
+            raise ValueError("OMNIS_DB_VERIFY_TIMEOUT_MS must be at least 10000")
 
-    def _connect(self):
+    def _connect(self, statement_timeout_ms: int = 10_000):
         if self._connect_factory is not None:
             return self._connect_factory()
-        try:
-            import psycopg
-            from psycopg.rows import dict_row
-        except ImportError as exc:
-            raise RuntimeError("PostgreSQL audit storage requires psycopg") from exc
-        from psycopg.conninfo import conninfo_to_dict
-        params = conninfo_to_dict(self.dsn)
-        host = (params.get("host") or "").strip()
-        local_hosts = {"localhost", "127.0.0.1", "::1"}
-        sslmode = "disable" if host in local_hosts or host.startswith("/") else "verify-full"
-        return psycopg.connect(self.dsn, row_factory=dict_row, sslmode=sslmode,
-                               connect_timeout=5, options="-c statement_timeout=10000")
+        from psycopg.rows import dict_row
+        from .postgres_connection import connect_postgres
+        return connect_postgres(self.dsn, dict_row, statement_timeout_ms=statement_timeout_ms)
 
     @staticmethod
     def _decode(row: dict[str, Any]) -> dict[str, Any]:
@@ -160,7 +155,7 @@ class PostgresAuditLog:
         previous_hash = _ZERO_HASH
         expected_index = 0
         try:
-            with self._connect() as db:
+            with self._connect(statement_timeout_ms=self.verify_timeout_ms) as db:
                 with db.cursor() as cur:
                     cur.execute(
                         """SELECT occurred_at, actor, event_type, payload, previous_hash, event_hash, event_json
