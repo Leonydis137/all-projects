@@ -159,3 +159,30 @@ def test_evidence_validation_rejects_nul_characters():
     record["submitted_by"] = "bad\x00value"
     with pytest.raises(EvidenceValidationError, match="NUL"):
         _validate(record)
+
+
+def test_postgres_verification_detects_denormalized_column_mismatch(postgres_dsn):
+    import hashlib
+    import json
+    import psycopg
+    from omnis.evidence import _canonical, _validate
+
+    clean = _validate(_record("column-mismatch-" + uuid4().hex))
+    with psycopg.connect(postgres_dsn) as db:
+        previous = db.execute(
+            "SELECT record_hash FROM omnis.evidence ORDER BY sequence DESC LIMIT 1"
+        ).fetchone()
+        previous_hash = previous[0] if previous else "0" * 64
+        digest = hashlib.sha256(_canonical({"record": clean, "previous_hash": previous_hash})).hexdigest()
+        db.execute(
+            """INSERT INTO omnis.evidence
+               (source_uri, content_sha256, acquired_at, acquisition_method, declared_license,
+                submitted_by, record_json, previous_hash, record_hash, idempotency_key)
+               VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, NULL)""",
+            ("https://mismatched.example/uri", clean["content_sha256"],
+             clean["acquired_at"], clean["acquisition_method"], clean["license"],
+             clean["submitted_by"], json.dumps(clean), previous_hash, digest),
+        )
+    result = _ledger(postgres_dsn).verify()
+    assert result["valid"] is False
+    assert result["reason"] == "column_mismatch"
