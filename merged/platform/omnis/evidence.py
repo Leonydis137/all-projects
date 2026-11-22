@@ -84,10 +84,14 @@ class EvidenceLedger:
                 CREATE TRIGGER IF NOT EXISTS evidence_no_delete
                 BEFORE DELETE ON evidence BEGIN SELECT RAISE(ABORT, 'evidence is append-only'); END;
             """)
+            # Serialize the additive migration so concurrent workers cannot race
+            # between inspecting the schema and adding the optional column.
+            db.execute("BEGIN IMMEDIATE")
             columns = {row["name"] for row in db.execute("PRAGMA table_info(evidence)")}
             if "idempotency_key" not in columns:
                 db.execute("ALTER TABLE evidence ADD COLUMN idempotency_key TEXT")
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS evidence_idempotency_key_uq ON evidence(idempotency_key) WHERE idempotency_key IS NOT NULL")
+            db.commit()
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(str(self.path), timeout=15)
@@ -106,7 +110,7 @@ class EvidenceLedger:
                         raise EvidenceValidationError("idempotency_key was already used for a different evidence record")
                     return {"sequence": existing["sequence"], **stored,
                             "previous_hash": existing["previous_hash"], "record_hash": existing["record_hash"],
-                            "source_authenticity": "unverified"}
+                            "source_authenticity": "unverified", "idempotent_replay": True}
             previous = db.execute("SELECT record_hash FROM evidence ORDER BY sequence DESC LIMIT 1").fetchone()
             previous_hash = previous["record_hash"] if previous else "0" * 64
             payload = {"record": clean, "previous_hash": previous_hash}
