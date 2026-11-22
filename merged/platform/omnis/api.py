@@ -276,7 +276,9 @@ def get_inventory() -> dict:
 @app.get("/v1/audit", dependencies=[Depends(auth)])
 def get_audit(limit: int = 50) -> dict:
     try:
-        return {"valid": audit.verify(), "entries": audit.list(limit=limit)}
+        verification = audit.verify_status() if hasattr(audit, "verify_status") else {"valid": audit.verify()}
+        return {"valid": verification["valid"], "verification": verification,
+                "entries": audit.list(limit=limit)}
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     except AuditIntegrityError:
