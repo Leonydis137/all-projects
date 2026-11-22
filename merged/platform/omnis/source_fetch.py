@@ -32,15 +32,24 @@ class SourceUnavailable(RuntimeError):
     """A source could not be retrieved within the configured safety limits."""
 
 
+class SourceConfigurationError(SourceUnavailable):
+    """Required source-acquisition policy or signing configuration is absent or invalid."""
+
+
 def _allowed_hosts() -> set[str]:
     raw = os.environ.get("OMNIS_SOURCE_ALLOWLIST", "")
-    return {item.strip().encode("idna").decode("ascii").lower().rstrip(".")
-            for item in raw.split(",") if item.strip()}
+    try:
+        return {item.strip().encode("idna").decode("ascii").lower().rstrip(".")
+                for item in raw.split(",") if item.strip()}
+    except UnicodeError as exc:
+        raise SourceConfigurationError("source allowlist contains an invalid hostname") from exc
 
 
 def _parse_source_uri(source_uri: str) -> tuple[str, str]:
     if not isinstance(source_uri, str) or not source_uri or len(source_uri) > MAX_URI_LENGTH:
         raise SourcePolicyError("source_uri is missing or exceeds the maximum length")
+    if any(ord(char) < 0x20 or ord(char) == 0x7f for char in source_uri):
+        raise SourcePolicyError("source_uri contains control characters")
     try:
         parsed = urlsplit(source_uri)
         host = parsed.hostname
@@ -62,11 +71,11 @@ def _parse_source_uri(source_uri: str) -> tuple[str, str]:
         raise SourcePolicyError("IP-literal source URLs are not allowed")
     allowed_hosts = _allowed_hosts()
     if not allowed_hosts:
-        raise SourceUnavailable("source allowlist is not configured")
+        raise SourceConfigurationError("source allowlist is not configured")
     if not normalized_host or normalized_host not in allowed_hosts:
         raise SourcePolicyError("source hostname is not in OMNIS_SOURCE_ALLOWLIST")
     path = parsed.path or "/"
-    if any(ord(char) < 0x20 or ord(char) == 0x7f or char == " " for char in path):
+    if any(ord(char) < 0x21 or ord(char) > 0x7e for char in path):
         raise SourcePolicyError("source path contains invalid characters")
     return normalized_host, path
 
@@ -109,7 +118,6 @@ def _fetch_pinned(host: str, path: str, address: str, max_bytes: int) -> tuple[b
     connection = _PinnedHTTPSConnection(host, address, FETCH_TIMEOUT_SECONDS)
     try:
         connection.request("GET", path, headers={
-            "Host": host,
             "Accept": "*/*",
             "Accept-Encoding": "identity",
             "Connection": "close",
@@ -124,7 +132,10 @@ def _fetch_pinned(host: str, path: str, address: str, max_bytes: int) -> tuple[b
         declared_length = response.getheader("Content-Length")
         if declared_length:
             try:
-                if int(declared_length) > max_bytes:
+                parsed_length = int(declared_length)
+                if parsed_length < 0:
+                    raise ValueError("negative Content-Length")
+                if parsed_length > max_bytes:
                     raise SourcePolicyError("source response exceeds the configured size limit")
             except ValueError as exc:
                 raise SourceUnavailable("source returned an invalid Content-Length") from exc
@@ -144,7 +155,7 @@ def _fetch_pinned(host: str, path: str, address: str, max_bytes: int) -> tuple[b
 def _signing_key():
     encoded = os.environ.get("OMNIS_PROVENANCE_PRIVATE_KEY_B64", "")
     if not encoded:
-        raise SourceUnavailable("source acquisition signing key is not configured")
+        raise SourceConfigurationError("source acquisition signing key is not configured")
     try:
         raw = base64.b64decode(
             encoded + "=" * (-len(encoded) % 4), altchars=b"-_", validate=True
@@ -154,7 +165,7 @@ def _signing_key():
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
         return Ed25519PrivateKey.from_private_bytes(raw)
     except Exception as exc:
-        raise SourceUnavailable("source acquisition signing key is invalid") from exc
+        raise SourceConfigurationError("source acquisition signing key is invalid") from exc
 
 
 def public_key_document() -> dict[str, str]:
@@ -175,6 +186,10 @@ def public_key_document() -> dict[str, str]:
 
 def acquire_and_attest(source_uri: str, license_name: str, fetcher_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
     """Fetch one allowlisted source, hash bytes, and sign the canonical fetch statement."""
+    if not isinstance(fetcher_id, str) or not fetcher_id.strip() or len(fetcher_id) > 128 or "\\x00" in fetcher_id:
+        raise SourceConfigurationError("OMNIS_SOURCE_FETCHER_ID is invalid")
+    if not isinstance(license_name, str) or not license_name.strip() or len(license_name) > 256 or "\\x00" in license_name:
+        raise SourcePolicyError("declared licence must be a non-empty value of at most 256 characters")
     host, path = _parse_source_uri(source_uri)
     addresses = _resolve_public_ips(host)
     content, media_type = _fetch_pinned(host, path, addresses[0], MAX_SOURCE_BYTES)
@@ -191,7 +206,8 @@ def acquire_and_attest(source_uri: str, license_name: str, fetcher_id: str) -> t
         "fetcher_id": fetcher_id,
         "tls_hostname_verified": True,
         "redirects_followed": 0,
-        "dns_addresses_checked": len(addresses),
+        "dns_addresses": addresses,
+        "connected_ip": addresses[0],
     }
     key = _signing_key()
     from cryptography.hazmat.primitives import serialization
