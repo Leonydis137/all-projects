@@ -60,7 +60,10 @@ def _parse_source_uri(source_uri: str) -> tuple[str, str]:
         pass
     else:
         raise SourcePolicyError("IP-literal source URLs are not allowed")
-    if not normalized_host or normalized_host not in _allowed_hosts():
+    allowed_hosts = _allowed_hosts()
+    if not allowed_hosts:
+        raise SourceUnavailable("source allowlist is not configured")
+    if not normalized_host or normalized_host not in allowed_hosts:
         raise SourcePolicyError("source hostname is not in OMNIS_SOURCE_ALLOWLIST")
     path = parsed.path or "/"
     if any(ord(char) < 0x20 or ord(char) == 0x7f or char == " " for char in path):
