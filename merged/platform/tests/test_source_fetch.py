@@ -230,3 +230,30 @@ def test_attestation_rejects_tampered_signature(tmp_path, monkeypatch):
     record["provenance_attestation"]["signature_b64"] = base64.urlsafe_b64encode(b"x" * 64).decode().rstrip("=")
     with pytest.raises(EvidenceValidationError, match="signature is invalid"):
         _validate(record)
+
+
+def test_missing_signing_key_fails_before_dns_or_network(monkeypatch):
+    monkeypatch.setenv("OMNIS_SOURCE_ALLOWLIST", "docs.example.org")
+    monkeypatch.delenv("OMNIS_PROVENANCE_PRIVATE_KEY_B64", raising=False)
+
+    def network_must_not_run(*args, **kwargs):
+        raise AssertionError("DNS must not run without a signing key")
+
+    monkeypatch.setattr(source_fetch, "_resolve_public_ips", network_must_not_run)
+    with pytest.raises(source_fetch.SourceConfigurationError, match="signing key"):
+        source_fetch.acquire_and_attest(
+            "https://docs.example.org/paper", "unknown", "test-fetcher"
+        )
+
+
+def test_source_uri_is_canonicalized_before_signing(monkeypatch):
+    _private_key_env(monkeypatch)
+    monkeypatch.setenv("OMNIS_SOURCE_ALLOWLIST", "docs.example.org")
+    monkeypatch.setattr(source_fetch, "_resolve_public_ips", lambda host: ["8.8.8.8"])
+    monkeypatch.setattr(source_fetch, "_fetch_pinned", lambda *args: (b"source", "text/plain"))
+    record, _ = source_fetch.acquire_and_attest(
+        "HTTPS://DOCS.EXAMPLE.ORG:443/paper", "unknown", "test-fetcher"
+    )
+    assert record["source_uri"] == "https://docs.example.org/paper"
+    assert record["provenance_attestation"]["statement"]["source_uri"] == record["source_uri"]
+    assert _validate(record)["source_uri"] == record["source_uri"]
