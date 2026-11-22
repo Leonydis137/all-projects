@@ -14,6 +14,10 @@ _ZERO_HASH = "0" * 64
 _LOG = logging.getLogger(__name__)
 
 
+class AuditIntegrityError(RuntimeError):
+    """Stored audit data is malformed or inconsistent with its integrity commitment."""
+
+
 def _canonical(value: dict[str, Any]) -> bytes:
     return json.dumps(value, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
 
@@ -147,7 +151,10 @@ class PostgresAuditLog:
                 rows = cur.fetchall()
         result = []
         for row in reversed(rows):
-            event = self._decode(row)
+            try:
+                event = self._decode(row)
+            except Exception as exc:
+                raise AuditIntegrityError("stored audit event failed integrity validation") from exc
             event["hash"] = row["event_hash"]
             result.append(event)
         return result
