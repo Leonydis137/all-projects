@@ -50,6 +50,8 @@ def _parse_source_uri(source_uri: str) -> tuple[str, str]:
         raise SourcePolicyError("source_uri is missing or exceeds the maximum length")
     if any(ord(char) < 0x20 or ord(char) == 0x7f for char in source_uri):
         raise SourcePolicyError("source_uri contains control characters")
+    if "?" in source_uri or "#" in source_uri:
+        raise SourcePolicyError("source_uri query strings and fragments are not allowed")
     try:
         parsed = urlsplit(source_uri)
         host = parsed.hostname
@@ -88,6 +90,8 @@ def _resolve_public_ips(host: str) -> list[str]:
     addresses = sorted({item[4][0] for item in answers})
     if not addresses:
         raise SourceUnavailable("source hostname returned no addresses")
+    if len(addresses) > 16:
+        raise SourcePolicyError("source hostname returned too many DNS addresses")
     for address in addresses:
         try:
             parsed = ipaddress.ip_address(address)
@@ -190,6 +194,8 @@ def acquire_and_attest(source_uri: str, license_name: str, fetcher_id: str) -> t
         raise SourceConfigurationError("OMNIS_SOURCE_FETCHER_ID is invalid")
     if not isinstance(license_name, str) or not license_name.strip() or len(license_name) > 256 or "\\x00" in license_name:
         raise SourcePolicyError("declared licence must be a non-empty value of at most 256 characters")
+    fetcher_id = fetcher_id.strip()
+    license_name = license_name.strip()
     host, path = _parse_source_uri(source_uri)
     addresses = _resolve_public_ips(host)
     content, media_type = _fetch_pinned(host, path, addresses[0], MAX_SOURCE_BYTES)
