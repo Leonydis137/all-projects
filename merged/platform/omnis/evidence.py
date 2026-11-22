@@ -52,6 +52,12 @@ def _validate(record: dict[str, Any]) -> dict[str, Any]:
             raise EvidenceValidationError("idempotency_key must be a non-empty string when provided")
         if "\x00" in idempotency_key:
             raise EvidenceValidationError("idempotency_key must not contain NUL characters")
+        try:
+            key_length = len(idempotency_key.strip().encode("utf-8"))
+        except UnicodeEncodeError as exc:
+            raise EvidenceValidationError("idempotency_key must be valid UTF-8 text") from exc
+        if key_length > 256:
+            raise EvidenceValidationError("idempotency_key must not exceed 256 UTF-8 bytes")
         clean["idempotency_key"] = idempotency_key.strip()
     return clean
 
