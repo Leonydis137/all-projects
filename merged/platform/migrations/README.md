@@ -7,6 +7,7 @@ Apply migrations in numeric order using a database-owner or migration role befor
 3. `003_audit_event_canonical_payload.sql` adds the canonical audit-event body required by the PostgreSQL audit adapter.
 4. `004_evidence_idempotency.sql` adds an optional unique client idempotency key and builds its unique index concurrently so normal evidence writes can continue.
 5. `005_case_insensitive_source_uri.sql` atomically replaces the original case-sensitive HTTP(S) constraint; it installs the new check as NOT VALID and validates it without blocking ordinary writes.
+6. `006_tenant_identity.sql` creates tenants, principals, memberships, and HMAC-digested API credentials.
 
 Example:
 
@@ -16,6 +17,7 @@ psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 002_ledger_immutability.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 003_audit_event_canonical_payload.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 004_evidence_idempotency.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 005_case_insensitive_source_uri.sql
+psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 006_tenant_identity.sql
 ```
 
 Migration 004 intentionally contains `CREATE INDEX CONCURRENTLY` and must not be wrapped in an explicit transaction. If an interrupted concurrent index build leaves an invalid index, inspect `pg_index.indisvalid`, drop that invalid index with `DROP INDEX CONCURRENTLY omnis.evidence_idempotency_key_uq`, and rerun migration 004.
@@ -39,5 +41,7 @@ GRANT USAGE, SELECT ON SEQUENCE omnis.audit_event_sequence_seq TO omnis_app;
 Do not grant table ownership, UPDATE, DELETE, TRUNCATE, schema CREATE, or migration privileges to the runtime role. Confirm the generated sequence names in the target database before applying grants. The database owner and superusers can still bypass ordinary application protections; use separate ownership and runtime roles.
 
 Migration 003 leaves `event_json` nullable to permit schema rollout over databases with existing audit rows. Existing rows without canonical bodies deliberately fail closed during full audit verification; reconcile or migrate those records before enabling PostgreSQL audit mode.
+
+After migration 006, grant the runtime role read-only access to identity records: `GRANT SELECT ON omnis.tenant, omnis.principal, omnis.tenant_membership, omnis.api_credential TO omnis_app;`. Do not grant identity-table mutation privileges to the runtime role. The tenant credential lookup is used only by `GET /v1/identity/me`; existing business routes still use the legacy shared token until tenant-scoped data access is implemented.
 
 The application uses a lightweight latest-event audit health probe. Full-chain integrity verification remains available through the audit verification operation and should be run as a deliberate integrity check rather than on every load-balancer probe. Hash chains do not prove source authenticity or actor identity, and cannot detect deletion of a final suffix without an independently retained checkpoint.
