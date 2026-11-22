@@ -61,7 +61,7 @@ async function loadCatalog(){const r=await fetch('/v1/catalog',{headers:hdr()});
  $('cards').innerHTML=d.projects.map(p=>`<div class="card"><b>${p.path.split('/').pop()}</b><br><span style="color:var(--mute)">${p.summary}</span><br>
  ${Object.entries(p.languages||{}).slice(0,3).map(([k,n])=>`<span class="tag">${k} ${n}</span>`).join('')}
  <br><small>${(p.platform_features||[]).map(f=>`<span class="tag">${f}</span>`).join('')}</small></div>`).join('')}
-fetch('/health').then(r=>r.json()).then(h=>{$('st').textContent=`v${h.version} · audit chain ${h.audit_chain_valid?'valid':'BROKEN'} · assistant ${h.assistant_configured?'ready':'not configured'}`});
+fetch('/health').then(async r=>{const h=await r.json();const healthy=r.ok&&h.status==='ok';const evidenceValid=Boolean(h.evidence_ledger&&h.evidence_ledger.valid);$('st').textContent=`v${h.version} · ${healthy?'healthy':'DEGRADED'} · audit chain ${h.audit_chain_valid?'valid':'BROKEN'} · evidence ledger ${evidenceValid?'valid':'BROKEN'} · assistant ${h.assistant_configured?'ready':'not configured'}`;$('st').className=healthy?'ok':'bad'}).catch(()=>{$('st').textContent='health status unavailable';$('st').className='bad'});
 tabs.forEach(x=>$(x).classList.remove('on'));$('catalog').classList.add('on');$('nav').children[0].classList.add('on');loadCatalog();
 </script>
 </body></html>
