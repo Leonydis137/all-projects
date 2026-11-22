@@ -19,7 +19,13 @@ from .evidence import EvidenceLedger, EvidenceValidationError
 from .postgres_evidence import EvidenceIntegrityError, PostgresEvidenceLedger
 from .protocols import AEON, Context
 from .recommend import Recommender
-from .source_fetch import (SourceConfigurationError, SourcePolicyError, SourceUnavailable, acquire_and_attest, public_key_document)
+from .source_fetch import (
+    SourceConfigurationError,
+    SourcePolicyError,
+    SourceUnavailable,
+    acquire_and_attest,
+    public_key_document,
+)
 
 sources.wire()
 app = FastAPI(title="OMNIS", version=__version__, description="All projects, one platform.")
