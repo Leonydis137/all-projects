@@ -29,7 +29,15 @@ def _json_normalize(value: Any):
     if value is None:
         return ("null",)
     if isinstance(value, (int, float, Decimal)):
-        return ("number", Decimal(str(value)).normalize())
+        number = Decimal(str(value))
+        if number.is_zero():
+            return ("number", 0)
+        sign, digits, exponent = number.as_tuple()
+        digits = list(digits)
+        while digits and digits[-1] == 0:
+            digits.pop()
+            exponent += 1
+        return ("number", sign, tuple(digits), exponent)
     if isinstance(value, dict):
         return ("object", tuple(sorted((str(key), _json_normalize(item)) for key, item in value.items())))
     if isinstance(value, list):
