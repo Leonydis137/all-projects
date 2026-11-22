@@ -19,6 +19,7 @@ from .evidence import EvidenceLedger, EvidenceValidationError
 from .postgres_evidence import EvidenceIntegrityError, PostgresEvidenceLedger
 from .protocols import AEON, Context
 from .recommend import Recommender
+from .source_fetch import (SourcePolicyError, SourceUnavailable, acquire_and_attest, public_key_document)
 
 sources.wire()
 app = FastAPI(title="OMNIS", version=__version__, description="All projects, one platform.")
@@ -155,6 +156,11 @@ class EvidenceIn(BaseModel):
     license: str
     submitted_by: str
     idempotency_key: Optional[str] = None
+
+
+class SourceFetchIn(BaseModel):
+    source_uri: str
+    license: str = "unspecified"
 
 
 @app.get("/health")
@@ -299,6 +305,42 @@ def record_evidence(body: EvidenceIn) -> dict:
         if not result.pop("idempotent_replay", False):
             audit.record("evidence.append", {"sequence": result["sequence"], "record_hash": result["record_hash"]})
         return result
+    except EvidenceIntegrityError:
+        return JSONResponse(status_code=503, content={"detail": "evidence_integrity_error"})
+    except EvidenceValidationError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/v1/source/attestation-key", dependencies=[Depends(auth)])
+def get_source_attestation_key() -> dict:
+    """Return the Ed25519 public key; clients must pin its fingerprint out-of-band."""
+    try:
+        return public_key_document()
+    except SourceUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.post("/v1/source/fetch", dependencies=[Depends(auth)])
+def fetch_source(body: SourceFetchIn) -> dict:
+    """Fetch an allowlisted HTTPS source and persist its signed fetch observation."""
+    fetcher_id = os.environ.get("OMNIS_SOURCE_FETCHER_ID", "omnis-source-fetcher")
+    try:
+        record, result = acquire_and_attest(body.source_uri, body.license, fetcher_id)
+        gated("source.fetch", {"host": record["provenance_attestation"]["statement"]["source_uri"].split("/", 3)[2]})
+        if config.DATABASE_URL and hasattr(evidence, "append_with_audit"):
+            stored = evidence.append_with_audit(record, audit)
+        else:
+            stored = evidence.append(record)
+            if not stored.pop("idempotent_replay", False):
+                audit.record("evidence.append", {
+                    "sequence": stored["sequence"], "record_hash": stored["record_hash"]
+                })
+        return {"evidence": stored, **result}
+    except SourcePolicyError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except SourceUnavailable as exc:
+        status = 503 if "not configured" in str(exc) or "signing key" in str(exc) else 502
+        raise HTTPException(status, str(exc)) from exc
     except EvidenceIntegrityError:
         return JSONResponse(status_code=503, content={"detail": "evidence_integrity_error"})
     except EvidenceValidationError as exc:
