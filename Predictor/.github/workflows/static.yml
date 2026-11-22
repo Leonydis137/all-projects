@@ -1,0 +1,499 @@
+# import React, { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { TrendingUp, Globe, DollarSign, Users, Activity, Brain, Zap, Database, RefreshCw } from 'lucide-react';
+
+const LiveDataAIInterface = () => {
+  const [activeTab, setActiveTab] = useState('market');
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [insights, setInsights] = useState([]);
+  
+  // Simulated live data streams (in real implementation, these would come from APIs)
+  const [marketData, setMarketData] = useState([]);
+  const [weatherData, setWeatherData] = useState([]);
+  const [newsData, setNewsData] = useState([]);
+  const [cryptoData, setCryptoData] = useState([]);
+  const [socialData, setSocialData] = useState([]);
+
+  // Initialize data streams
+  useEffect(() => {
+    generateInitialData();
+    const interval = setInterval(updateLiveData, 5000); // Update every 5 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const generateInitialData = () => {
+    // Market data simulation
+    const market = [];
+    for (let i = 0; i < 24; i++) {
+      market.push({
+        time: `${i}:00`,
+        price: 150 + Math.random() * 50,
+        volume: Math.floor(Math.random() * 1000000),
+        sentiment: Math.random() * 100
+      });
+    }
+    setMarketData(market);
+
+    // Weather data simulation
+    const weather = [
+      { city: 'New York', temp: 22 + Math.random() * 10, humidity: 60 + Math.random() * 30 },
+      { city: 'London', temp: 15 + Math.random() * 8, humidity: 70 + Math.random() * 20 },
+      { city: 'Tokyo', temp: 25 + Math.random() * 8, humidity: 65 + Math.random() * 25 },
+      { city: 'Sydney', temp: 18 + Math.random() * 12, humidity: 55 + Math.random() * 35 },
+      { city: 'Dubai', temp: 35 + Math.random() * 10, humidity: 40 + Math.random() * 20 }
+    ];
+    setWeatherData(weather);
+
+    // News sentiment data
+    const news = [
+      { category: 'Technology', sentiment: 75 + Math.random() * 20, articles: Math.floor(Math.random() * 100) },
+      { category: 'Finance', sentiment: 60 + Math.random() * 30, articles: Math.floor(Math.random() * 80) },
+      { category: 'Politics', sentiment: 40 + Math.random() * 40, articles: Math.floor(Math.random() * 120) },
+      { category: 'Health', sentiment: 65 + Math.random() * 25, articles: Math.floor(Math.random() * 90) },
+      { category: 'Sports', sentiment: 80 + Math.random() * 15, articles: Math.floor(Math.random() * 60) }
+    ];
+    setNewsData(news);
+
+    // Crypto data
+    const crypto = [
+      { name: 'Bitcoin', price: 43000 + Math.random() * 5000, change: (Math.random() - 0.5) * 10 },
+      { name: 'Ethereum', price: 2500 + Math.random() * 500, change: (Math.random() - 0.5) * 15 },
+      { name: 'Cardano', price: 0.5 + Math.random() * 0.3, change: (Math.random() - 0.5) * 20 },
+      { name: 'Solana', price: 100 + Math.random() * 50, change: (Math.random() - 0.5) * 25 }
+    ];
+    setCryptoData(crypto);
+
+    // Social media trends
+    const social = [
+      { platform: 'Twitter', engagement: Math.floor(Math.random() * 1000000), trending: '#AI' },
+      { platform: 'LinkedIn', engagement: Math.floor(Math.random() * 500000), trending: '#TechJobs' },
+      { platform: 'Reddit', engagement: Math.floor(Math.random() * 2000000), trending: 'r/MachineLearning' },
+      { platform: 'Instagram', engagement: Math.floor(Math.random() * 3000000), trending: '#Innovation' }
+    ];
+    setSocialData(social);
+
+    generateInsights();
+  };
+
+  const updateLiveData = () => {
+    setIsLoading(true);
+    
+    // Simulate API calls and data updates
+    setTimeout(() => {
+      // Update market data
+      setMarketData(prev => {
+        const newData = [...prev];
+        const lastPrice = newData[newData.length - 1].price;
+        const newPrice = lastPrice + (Math.random() - 0.5) * 5;
+        newData.shift();
+        newData.push({
+          time: new Date().toLocaleTimeString().slice(0, 5),
+          price: newPrice,
+          volume: Math.floor(Math.random() * 1000000),
+          sentiment: Math.random() * 100
+        });
+        return newData;
+      });
+
+      // Update crypto prices
+      setCryptoData(prev => prev.map(coin => ({
+        ...coin,
+        price: coin.price + (Math.random() - 0.5) * coin.price * 0.02,
+        change: (Math.random() - 0.5) * 10
+      })));
+
+      setLastUpdate(new Date());
+      setIsLoading(false);
+      generateInsights();
+    }, 1000);
+  };
+
+  const generateInsights = () => {
+    const aiInsights = [
+      "Market volatility detected: 23% increase in trading volume across tech stocks",
+      "Weather pattern analysis: Unusual temperature variations in 3 major cities suggest climate anomaly",
+      "Social sentiment trending positive for AI-related topics (+15% engagement)",
+      "Crypto correlation analysis: Bitcoin and Ethereum showing 0.85 correlation coefficient",
+      "News sentiment analysis: Technology sector maintains highest positivity score at 78%"
+    ];
+    
+    setInsights(aiInsights.slice(0, 3));
+  };
+
+  const tabs = [
+    { id: 'market', name: 'Market Intelligence', icon: TrendingUp },
+    { id: 'weather', name: 'Weather Analytics', icon: Globe },
+    { id: 'news', name: 'News Sentiment', icon: Activity },
+    { id: 'crypto', name: 'Crypto Monitor', icon: DollarSign },
+    { id: 'social', name: 'Social Trends', icon: Users }
+  ];
+
+  const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00'];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400 mb-2">
+              AI Intelligence Dashboard
+            </h1>
+            <p className="text-blue-200">Real-time data analysis and insights</p>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            <div className="bg-black/30 backdrop-blur-lg rounded-lg px-4 py-2 border border-blue-500/30">
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${isLoading ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'}`}></div>
+                <span className="text-sm">Last update: {lastUpdate.toLocaleTimeString()}</span>
+              </div>
+            </div>
+            
+            <button
+              onClick={updateLiveData}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 p-3 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all"
+              disabled={isLoading}
+            >
+              <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </div>
+
+        {/* AI Insights Panel */}
+        <div className="bg-black/30 backdrop-blur-lg rounded-2xl p-6 border border-purple-500/30 mb-8">
+          <div className="flex items-center mb-4">
+            <Brain className="w-6 h-6 mr-2 text-purple-400" />
+            <h2 className="text-2xl font-bold">AI-Generated Insights</h2>
+          </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {insights.map((insight, index) => (
+              <div key={index} className="bg-gradient-to-r from-purple-900/50 to-blue-900/50 rounded-xl p-4 border border-blue-500/30">
+                <div className="flex items-start">
+                  <Zap className="w-5 h-5 mr-3 text-yellow-400 mt-1 flex-shrink-0" />
+                  <p className="text-sm">{insight}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex space-x-1 mb-8 bg-black/30 backdrop-blur-lg rounded-xl p-2 border border-blue-500/30">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center space-x-2 px-4 py-3 rounded-lg transition-all ${
+                activeTab === tab.id
+                  ? 'bg-gradient-to-r from-blue-600 to-purple-600 shadow-lg'
+                  : 'hover:bg-white/10'
+              }`}
+            >
+              <tab.icon className="w-5 h-5" />
+              <span className="hidden md:block">{tab.name}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Content Panels */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {activeTab === 'market' && (
+            <>
+              <div className="bg-black/30 backdrop-blur-lg rounded-2xl p-6 border border-green-500/30">
+                <h3 className="text-xl font-bold mb-4 flex items-center">
+                  <TrendingUp className="w-5 h-5 mr-2 text-green-400" />
+                  Stock Price Movement
+                </h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={marketData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="time" stroke="#9CA3AF" />
+                    <YAxis stroke="#9CA3AF" />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: '#1F2937', 
+                        border: '1px solid #4B5563',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Line type="monotone" dataKey="price" stroke="#10B981" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="bg-black/30 backdrop-blur-lg rounded-2xl p-6 border border-blue-500/30">
+                <h3 className="text-xl font-bold mb-4 flex items-center">
+                  <Activity className="w-5 h-5 mr-2 text-blue-400" />
+                  Market Sentiment
+                </h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={marketData.slice(-6)}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="time" stroke="#9CA3AF" />
+                    <YAxis stroke="#9CA3AF" />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: '#1F2937', 
+                        border: '1px solid #4B5563',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Bar dataKey="sentiment" fill="#3B82F6" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'weather' && (
+            <>
+              <div className="bg-black/30 backdrop-blur-lg rounded-2xl p-6 border border-cyan-500/30">
+                <h3 className="text-xl font-bold mb-4 flex items-center">
+                  <Globe className="w-5 h-5 mr-2 text-cyan-400" />
+                  Global Temperature
+                </h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={weatherData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="city" stroke="#9CA3AF" />
+                    <YAxis stroke="#9CA3AF" />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: '#1F2937', 
+                        border: '1px solid #4B5563',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Bar dataKey="temp" fill="#06B6D4" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="bg-black/30 backdrop-blur-lg rounded-2xl p-6 border border-teal-500/30">
+                <h3 className="text-xl font-bold mb-4">Weather Analytics</h3>
+                <div className="space-y-4">
+                  {weatherData.map((city, index) => (
+                    <div key={index} className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
+                      <div>
+                        <div className="font-semibold">{city.city}</div>
+                        <div className="text-sm text-gray-400">{city.temp.toFixed(1)}°C</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-gray-400">Humidity</div>
+                        <div className="font-semibold">{city.humidity.toFixed(0)}%</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'news' && (
+            <>
+              <div className="bg-black/30 backdrop-blur-lg rounded-2xl p-6 border border-orange-500/30">
+                <h3 className="text-xl font-bold mb-4 flex items-center">
+                  <Activity className="w-5 h-5 mr-2 text-orange-400" />
+                  News Sentiment Analysis
+                </h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={newsData}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      dataKey="sentiment"
+                      nameKey="category"
+                    >
+                      {newsData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="bg-black/30 backdrop-blur-lg rounded-2xl p-6 border border-red-500/30">
+                <h3 className="text-xl font-bold mb-4">Category Breakdown</h3>
+                <div className="space-y-4">
+                  {newsData.map((category, index) => (
+                    <div key={index} className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
+                      <div>
+                        <div className="font-semibold">{category.category}</div>
+                        <div className="text-sm text-gray-400">{category.articles} articles</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-gray-400">Sentiment</div>
+                        <div className={`font-semibold ${category.sentiment > 70 ? 'text-green-400' : category.sentiment > 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+                          {category.sentiment.toFixed(0)}%
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'crypto' && (
+            <>
+              <div className="bg-black/30 backdrop-blur-lg rounded-2xl p-6 border border-yellow-500/30">
+                <h3 className="text-xl font-bold mb-4 flex items-center">
+                  <DollarSign className="w-5 h-5 mr-2 text-yellow-400" />
+                  Cryptocurrency Prices
+                </h3>
+                <div className="space-y-4">
+                  {cryptoData.map((coin, index) => (
+                    <div key={index} className="flex justify-between items-center p-4 bg-gray-800/50 rounded-lg">
+                      <div>
+                        <div className="font-bold text-lg">{coin.name}</div>
+                        <div className="text-2xl font-mono">${coin.price.toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-lg font-bold ${coin.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {coin.change >= 0 ? '+' : ''}{coin.change.toFixed(2)}%
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-black/30 backdrop-blur-lg rounded-2xl p-6 border border-purple-500/30">
+                <h3 className="text-xl font-bold mb-4">Market Analysis</h3>
+                <div className="space-y-4">
+                  <div className="p-4 bg-gradient-to-r from-green-900/30 to-blue-900/30 rounded-lg">
+                    <div className="text-sm text-gray-400 mb-1">Market Cap Leader</div>
+                    <div className="text-xl font-bold">Bitcoin</div>
+                    <div className="text-sm">Dominance: 42.3%</div>
+                  </div>
+                  <div className="p-4 bg-gradient-to-r from-purple-900/30 to-pink-900/30 rounded-lg">
+                    <div className="text-sm text-gray-400 mb-1">Highest Volatility</div>
+                    <div className="text-xl font-bold">Solana</div>
+                    <div className="text-sm">24h Range: 18.7%</div>
+                  </div>
+                  <div className="p-4 bg-gradient-to-r from-blue-900/30 to-cyan-900/30 rounded-lg">
+                    <div className="text-sm text-gray-400 mb-1">DeFi Leader</div>
+                    <div className="text-xl font-bold">Ethereum</div>
+                    <div className="text-sm">TVL: $25.4B</div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'social' && (
+            <>
+              <div className="bg-black/30 backdrop-blur-lg rounded-2xl p-6 border border-pink-500/30">
+                <h3 className="text-xl font-bold mb-4 flex items-center">
+                  <Users className="w-5 h-5 mr-2 text-pink-400" />
+                  Social Media Engagement
+                </h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={socialData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="platform" stroke="#9CA3AF" />
+                    <YAxis stroke="#9CA3AF" />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: '#1F2937', 
+                        border: '1px solid #4B5563',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Bar dataKey="engagement" fill="#EC4899" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="bg-black/30 backdrop-blur-lg rounded-2xl p-6 border border-indigo-500/30">
+                <h3 className="text-xl font-bold mb-4">Trending Topics</h3>
+                <div className="space-y-4">
+                  {socialData.map((platform, index) => (
+                    <div key={index} className="flex justify-between items-center p-4 bg-gray-800/50 rounded-lg">
+                      <div>
+                        <div className="font-bold text-lg">{platform.platform}</div>
+                        <div className="text-indigo-400 font-mono">{platform.trending}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-gray-400">Engagement</div>
+                        <div className="text-lg font-bold">{(platform.engagement / 1000000).toFixed(1)}M</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Data Sources Info */}
+        <div className="mt-8 bg-black/20 backdrop-blur-lg rounded-xl p-4 border border-gray-500/30">
+          <div className="flex items-center justify-center space-x-8 text-sm text-gray-400">
+            <div className="flex items-center space-x-2">
+              <Database className="w-4 h-4" />
+              <span>Live Data Sources</span>
+            </div>
+            <span>•</span>
+            <span>Market APIs</span>
+            <span>•</span>
+            <span>Weather Services</span>
+            <span>•</span>
+            <span>News Aggregators</span>
+            <span>•</span>
+            <span>Social Analytics</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default LiveDataAIInterface; workflow for deploying static content to GitHub Pages
+name: Deploy static content to Pages
+
+on:
+  # Runs on pushes targeting the default branch
+  push:
+    branches: ["main"]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # Single deploy job since we're just deploying
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload entire repository
+          path: '.'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
