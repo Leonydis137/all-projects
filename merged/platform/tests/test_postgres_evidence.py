@@ -30,6 +30,12 @@ def postgres_dsn():
     return DSN
 
 
+def _ledger(dsn: str):
+    from omnis.postgres_audit import PostgresAuditLog
+    from omnis.postgres_evidence import PostgresEvidenceLedger
+    return PostgresEvidenceLedger(dsn, audit_log=PostgresAuditLog(dsn))
+
+
 def _record(marker: str) -> dict:
     return {
         "source_uri": f"https://example.org/evidence/{marker}",
@@ -44,7 +50,7 @@ def _record(marker: str) -> dict:
 def test_postgres_append_list_and_verify(postgres_dsn):
     from omnis.postgres_evidence import PostgresEvidenceLedger
 
-    ledger = PostgresEvidenceLedger(postgres_dsn)
+    ledger = _ledger(postgres_dsn)
     marker = "pg-" + uuid4().hex
     appended = ledger.append(_record(marker))
     listed = ledger.list(limit=10, before=appended["sequence"] + 1)
@@ -63,7 +69,7 @@ def test_postgres_serializes_concurrent_appends(postgres_dsn):
     marker = "concurrent-" + uuid4().hex
 
     def append(index: int):
-        return PostgresEvidenceLedger(postgres_dsn).append(_record(f"{marker}-{index}"))
+        return _ledger(postgres_dsn).append(_record(f"{marker}-{index}"))
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         rows = list(pool.map(append, range(4)))
