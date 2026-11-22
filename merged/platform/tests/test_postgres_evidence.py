@@ -188,3 +188,11 @@ def test_postgres_verification_detects_denormalized_column_mismatch(postgres_dsn
     result = _ledger(postgres_dsn).verify()
     assert result["valid"] is False
     assert result["reason"] == "column_mismatch"
+
+
+def test_evidence_validation_rejects_oversized_idempotency_keys():
+    from omnis.evidence import EvidenceValidationError, _validate
+
+    record = {**_record("oversized-key"), "idempotency_key": "x" * 257}
+    with pytest.raises(EvidenceValidationError, match="256 UTF-8 bytes"):
+        _validate(record)
