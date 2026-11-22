@@ -1,6 +1,8 @@
 # Author: Juan-Louw Greyling <juanlouw.greyling@gmail.com>
 """OMNIS gateway: one FastAPI app exposing the features of every merged project."""
 import os
+import threading
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -27,6 +29,9 @@ audit = (PostgresAuditLog(config.DATABASE_URL, actor=os.environ.get("OMNIS_AUDIT
 evidence = (PostgresEvidenceLedger(config.DATABASE_URL, audit_log=audit) if config.DATABASE_URL else
             EvidenceLedger(os.environ.get("OMNIS_EVIDENCE_DB", str(config.PLATFORM_DIR / "var" / "evidence.sqlite3"))))
 STATIC = Path(__file__).parent / "static"
+_HEALTH_CACHE_TTL_SECONDS = 2.0
+_health_lock = threading.Lock()
+_health_cache: dict[str, Any] = {"checked_at": 0.0, "response": None}
 
 
 def auth(authorization: Optional[str] = Header(default=None)) -> None:
@@ -120,26 +125,38 @@ class EvidenceIn(BaseModel):
 
 @app.get("/health")
 def health():
-    """Expose integrity failures as an unhealthy HTTP response without leaking internals."""
-    try:
-        audit_valid = bool(audit.health() if hasattr(audit, "health") else audit.verify())
-    except Exception:
-        audit_valid = False
-    try:
-        evidence_status = evidence.health() if hasattr(evidence, "health") else evidence.verify()
-        if not isinstance(evidence_status, dict) or not isinstance(evidence_status.get("valid"), bool):
-            evidence_status = {"valid": False, "reason": "invalid_verifier_response"}
-    except Exception:
-        evidence_status = {"valid": False, "reason": "verification_error"}
+    """Expose integrity failures without opening a new DB connection per probe."""
+    with _health_lock:
+        now = time.monotonic()
+        cached = _health_cache["response"]
+        if cached is not None and now - _health_cache["checked_at"] < _HEALTH_CACHE_TTL_SECONDS:
+            status_code, payload = cached
+            if status_code == 503:
+                return JSONResponse(status_code=503, content=payload)
+            return payload
 
-    healthy = audit_valid and evidence_status["valid"]
-    payload = {"status": "ok" if healthy else "degraded", "version": __version__,
-               "sources": str(config.SOURCES), "sources_present": config.SOURCES.is_dir(),
-               "import_roots": sources.wire() or "already wired", "audit_chain_valid": audit_valid,
-               "evidence_ledger": evidence_status, "assistant_configured": bool(config.ANTHROPIC_API_KEY)}
-    if not healthy:
-        return JSONResponse(status_code=503, content=payload)
-    return payload
+        try:
+            audit_valid = bool(audit.health() if hasattr(audit, "health") else audit.verify())
+        except Exception:
+            audit_valid = False
+        try:
+            evidence_status = evidence.health() if hasattr(evidence, "health") else evidence.verify()
+            if not isinstance(evidence_status, dict) or not isinstance(evidence_status.get("valid"), bool):
+                evidence_status = {"valid": False, "reason": "invalid_verifier_response"}
+        except Exception:
+            evidence_status = {"valid": False, "reason": "verification_error"}
+
+        healthy = audit_valid and evidence_status["valid"]
+        payload = {"status": "ok" if healthy else "degraded", "version": __version__,
+                   "sources": str(config.SOURCES), "sources_present": config.SOURCES.is_dir(),
+                   "import_roots": sources.wire() or "already wired", "audit_chain_valid": audit_valid,
+                   "evidence_ledger": evidence_status, "assistant_configured": bool(config.ANTHROPIC_API_KEY)}
+        status_code = 200 if healthy else 503
+        _health_cache["checked_at"] = now
+        _health_cache["response"] = (status_code, payload)
+        if not healthy:
+            return JSONResponse(status_code=503, content=payload)
+        return payload
 
 
 @app.get("/v1/catalog", dependencies=[Depends(auth)])
