@@ -142,6 +142,6 @@ def test_evidence_validation_rejects_nul_characters():
     from omnis.evidence import EvidenceValidationError, _validate
 
     record = _record("nul-" + uuid4().hex)
-    record["submitted_by"] = "bad\\x00value"
+    record["submitted_by"] = "bad\x00value"
     with pytest.raises(EvidenceValidationError, match="NUL"):
         _validate(record)
