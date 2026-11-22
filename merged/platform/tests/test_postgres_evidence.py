@@ -105,7 +105,8 @@ def test_evidence_and_audit_commit_atomically(postgres_dsn):
     audit = PostgresAuditLog(postgres_dsn, actor="atomic-test")
     marker = "atomic-" + uuid4().hex
     with psycopg.connect(postgres_dsn) as db:
-        before = db.execute("SELECT count(*) AS n FROM omnis.evidence").fetchone()[0]
+        before_evidence = db.execute("SELECT count(*) FROM omnis.evidence").fetchone()[0]
+        before_audit = db.execute("SELECT count(*) FROM omnis.audit_event").fetchone()[0]
 
     class FailingAudit:
         def record_in_transaction(self, db, kind, payload):
@@ -114,18 +115,22 @@ def test_evidence_and_audit_commit_atomically(postgres_dsn):
     with pytest.raises(RuntimeError, match="simulated audit failure"):
         ledger.append_with_audit(_record(marker), FailingAudit())
     with psycopg.connect(postgres_dsn) as db:
-        after_failure = db.execute("SELECT count(*) AS n FROM omnis.evidence").fetchone()[0]
-    assert after_failure == before
+        after_failure_evidence = db.execute("SELECT count(*) FROM omnis.evidence").fetchone()[0]
+        after_failure_audit = db.execute("SELECT count(*) FROM omnis.audit_event").fetchone()[0]
+    assert after_failure_evidence == before_evidence
+    assert after_failure_audit == before_audit
 
     appended = ledger.append_with_audit(_record(marker), audit)
     assert appended["submitted_by"] == marker
-    events = audit.list(limit=500)
-    assert any(
-        event["kind"] == "evidence.append"
-        and event["payload"].get("sequence") == appended["sequence"]
-        and event["payload"].get("record_hash") == appended["record_hash"]
-        for event in events
-    )
+    with psycopg.connect(postgres_dsn) as db:
+        paired_events = db.execute(
+            """SELECT count(*) FROM omnis.audit_event
+               WHERE event_type = 'evidence.append'
+                 AND payload->>'sequence' = %s
+                 AND payload->>'record_hash' = %s""",
+            (str(appended["sequence"]), appended["record_hash"]),
+        ).fetchone()[0]
+    assert paired_events == 1
     assert audit.verify() is True
 
 
