@@ -9,10 +9,14 @@ import hashlib
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from .evidence import EvidenceValidationError, _canonical, _validate
+
+
+class EvidenceColumnMismatch(ValueError):
+    """Denormalized SQL columns disagree with the canonical evidence JSON."""
 
 _LOG = logging.getLogger(__name__)
 
@@ -44,6 +48,27 @@ class PostgresEvidenceLedger:
             payload = json.loads(payload)
         if not isinstance(payload, dict):
             raise EvidenceValidationError("stored evidence record is malformed")
+        expected_fields = {
+            "source_uri": payload.get("source_uri"),
+            "content_sha256": payload.get("content_sha256"),
+            "acquisition_method": payload.get("acquisition_method"),
+            "declared_license": payload.get("license"),
+            "submitted_by": payload.get("submitted_by"),
+        }
+        for column, expected_value in expected_fields.items():
+            actual = row[column]
+            if column == "content_sha256":
+                actual = actual.strip()
+            if actual != expected_value:
+                raise EvidenceColumnMismatch(f"evidence column {column} differs from record_json")
+        stored_time = row["acquired_at"]
+        if stored_time.tzinfo is None:
+            stored_time = stored_time.replace(tzinfo=timezone.utc)
+        else:
+            stored_time = stored_time.astimezone(timezone.utc)
+        expected_time = datetime.fromisoformat(payload["acquired_at"].replace("Z", "+00:00")).astimezone(timezone.utc)
+        if stored_time != expected_time:
+            raise EvidenceColumnMismatch("evidence column acquired_at differs from record_json")
         return {
             "sequence": row["sequence"],
             **payload,
@@ -70,7 +95,8 @@ class PostgresEvidenceLedger:
                 cur.execute("SELECT pg_advisory_xact_lock(hashtext('omnis.evidence'))")
                 if clean.get("idempotency_key"):
                     cur.execute(
-                        """SELECT sequence, record_json, previous_hash, record_hash
+                        """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
+                                  declared_license, submitted_by, record_json, previous_hash, record_hash
                            FROM omnis.evidence WHERE idempotency_key = %s""",
                         (clean["idempotency_key"],),
                     )
@@ -125,12 +151,14 @@ class PostgresEvidenceLedger:
             with db.cursor() as cur:
                 if before is None:
                     cur.execute(
-                        """SELECT sequence, record_json, previous_hash, record_hash, source_authenticity
+                        """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
+                                  declared_license, submitted_by, record_json, previous_hash, record_hash, source_authenticity
                            FROM omnis.evidence ORDER BY sequence DESC LIMIT %s""", (limit,)
                     )
                 else:
                     cur.execute(
-                        """SELECT sequence, record_json, previous_hash, record_hash, source_authenticity
+                        """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
+                                  declared_license, submitted_by, record_json, previous_hash, record_hash, source_authenticity
                            FROM omnis.evidence WHERE sequence < %s
                            ORDER BY sequence DESC LIMIT %s""", (before, limit)
                     )
@@ -142,7 +170,8 @@ class PostgresEvidenceLedger:
         try:
             with self._connect() as db:
                 with db.cursor() as cur:
-                    cur.execute("""SELECT sequence, record_json, previous_hash, record_hash
+                    cur.execute("""SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
+                                          declared_license, submitted_by, record_json, previous_hash, record_hash
                                    FROM omnis.evidence ORDER BY sequence DESC LIMIT 1""")
                     row = cur.fetchone()
             if row is None:
@@ -189,7 +218,8 @@ class PostgresEvidenceLedger:
             with self._connect(statement_timeout_ms=self.verify_timeout_ms) as db:
                 with db.cursor() as cur:
                     cur.execute(
-                        """SELECT sequence, record_json, previous_hash, record_hash
+                        """SELECT sequence, source_uri, content_sha256, acquired_at, acquisition_method,
+                                  declared_license, submitted_by, record_json, previous_hash, record_hash
                            FROM omnis.evidence ORDER BY sequence"""
                     )
                     rows = cur.fetchall()
@@ -206,6 +236,9 @@ class PostgresEvidenceLedger:
                     if row["previous_hash"] != previous_hash or row["record_hash"] != expected:
                         return {"valid": False, "checked": checked,
                                 "failed_sequence": row["sequence"], "reason": "hash_mismatch"}
+                except EvidenceColumnMismatch:
+                    return {"valid": False, "checked": checked,
+                            "failed_sequence": row["sequence"], "reason": "column_mismatch"}
                 except (TypeError, ValueError, KeyError):
                     return {"valid": False, "checked": checked,
                             "failed_sequence": row["sequence"], "reason": "malformed_record"}
