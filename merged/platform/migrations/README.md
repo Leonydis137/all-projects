@@ -1,16 +1,22 @@
 # OMNIS PostgreSQL migrations
 
-Apply migrations in numeric order using a database-owner or migration role:
+Apply migrations in numeric order using a database-owner or migration role before enabling PostgreSQL-backed OMNIS storage:
 
 1. `001_evidence_and_audit.sql` creates the `omnis` schema and ledger tables.
 2. `002_ledger_immutability.sql` hardens hash formats, removes default PUBLIC privileges, and blocks UPDATE, DELETE, and TRUNCATE.
+3. `003_audit_event_canonical_payload.sql` adds the canonical audit-event body required by the PostgreSQL audit adapter.
+4. `004_evidence_idempotency.sql` adds an optional unique client idempotency key for retry-safe evidence submission.
 
 Example:
 
 ```sh
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 001_evidence_and_audit.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 002_ledger_immutability.sql
+psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 003_audit_event_canonical_payload.sql
+psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 004_evidence_idempotency.sql
 ```
+
+Set `OMNIS_DATABASE_URL` only after all three migrations have completed. This switches both evidence and audit storage from their local fallback implementations to PostgreSQL. During a rolling deployment, drain old application instances before relying on the durable audit chain; older instances do not write to PostgreSQL.
 
 ## Application-role provisioning
 
@@ -26,4 +32,6 @@ GRANT USAGE, SELECT ON SEQUENCE omnis.audit_event_sequence_seq TO omnis_app;
 
 Do not grant table ownership, UPDATE, DELETE, TRUNCATE, schema CREATE, or migration privileges to the runtime role. Confirm the generated sequence names in the target database before applying grants. The database owner and superusers can still bypass ordinary application protections; use separate ownership and runtime roles.
 
-The schema is a future durable-storage foundation. The current OMNIS API still uses its SQLite evidence ledger and in-process audit log; these migrations do not silently switch runtime storage. Hash chains detect record modification relative to the retained chain, but do not prove source authenticity, actor identity, or detect deletion of an entire suffix without an independently retained checkpoint.
+Migration 003 leaves `event_json` nullable to permit schema rollout over databases with existing audit rows. Existing rows without canonical bodies deliberately fail closed during full audit verification; reconcile or migrate those records before enabling PostgreSQL audit mode.
+
+The application uses a lightweight latest-event audit health probe. Full-chain integrity verification remains available through the audit verification operation and should be run as a deliberate integrity check rather than on every load-balancer probe. Hash chains do not prove source authenticity or actor identity, and cannot detect deletion of a final suffix without an independently retained checkpoint.
