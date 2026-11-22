@@ -164,6 +164,7 @@ def test_identity_endpoint_uses_database_principal_and_attributes_audit(monkeypa
     assert response.json()["principal_id"] == principal.principal_id
     assert "evidence:write" in response.json()["permissions"]
     assert all(entry.get("actor") == principal.principal_id for entry in test_audit.list())
+    assert all(entry["payload"].get("tenant_id") == principal.tenant_id for entry in test_audit.list())
     assert test_audit.verify()
 
 
