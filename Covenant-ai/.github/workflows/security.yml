@@ -1,0 +1,259 @@
+name: CI - Covenant.AI Ultimate Secure Multi-Python
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  PYTHONPATH: src
+
+jobs:
+  # -------------------------
+  # Detect Changes
+  # -------------------------
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      lint-needed: ${{ steps.check.outputs.lint }}
+      tests-needed: ${{ steps.check.outputs.tests }}
+      workflows-needed: ${{ steps.check.outputs.workflows }}
+      docker-needed: ${{ steps.check.outputs.docker }}
+      security-needed: ${{ steps.check.outputs.security }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Determine changed directories
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            git fetch origin ${{ github.base_ref }} --depth=1
+            CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          else
+            CHANGED=$(git ls-files)
+          fi
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          # Lint/type needed if any .py in src or tests changed
+          if echo "$CHANGED" | grep -E '^(src/|tests/).*\.py$'; then
+            echo "::set-output name=lint::true"
+            echo "::set-output name=tests::true"
+          else
+            echo "::set-output name=lint::false"
+            echo "::set-output name=tests::false"
+          fi
+
+          # Workflows needed if any scripts in workflows/ changed
+          if echo "$CHANGED" | grep -E '^workflows/.*\.py$'; then
+            echo "::set-output name=workflows::true"
+          else
+            echo "::set-output name=workflows::false"
+          fi
+
+          # Docker needed if src or workflows changed
+          if echo "$CHANGED" | grep -E '^(src/|workflows/)'; then
+            echo "::set-output name=docker::true"
+          else
+            echo "::set-output name=docker::false"
+          fi
+
+          # Security scan needed if requirements.txt changed
+          if echo "$CHANGED" | grep -E '^requirements\.txt$'; then
+            echo "::set-output name=security::true"
+          else
+            echo "::set-output name=security::false"
+          fi
+
+  # -------------------------
+  # Lint + Type Check (Multi-Python)
+  # -------------------------
+  lint-type:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.lint == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-lint-${{ matrix.python-version }}
+      - name: Install linting dependencies
+        run: pip install --upgrade pip black mypy pylint
+      - name: Detect Python files
+        id: files
+        run: |
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.py$' || true)
+          if [ -z "$CHANGED" ]; then
+            CHANGED=$(git ls-files 'src/**/*.py' 'tests/**/*.py')
+          fi
+          echo "::set-output name=files::$CHANGED"
+      - name: Run Black
+        run: black --check --diff ${{ steps.files.outputs.files }}
+      - name: Run Mypy
+        run: mypy --strict ${{ steps.files.outputs.files }}
+      - name: Run Pylint
+        run: pylint --rcfile=.pylintrc ${{ steps.files.outputs.files }} || true
+
+  # -------------------------
+  # Unit + Integration Tests (Multi-Python)
+  # -------------------------
+  tests:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.tests == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-test-${{ matrix.python-version }}
+      - name: Install test dependencies
+        run: pip install --upgrade pip && pip install -r requirements.txt || echo "No requirements.txt"
+      - uses: actions/cache@v3
+        with:
+          path: .pytest_cache
+          key: ${{ runner.os }}-pytest-${{ github.sha }}-${{ matrix.python-version }}
+      - name: Run pytest
+        run: pytest tests/unit tests/integration --cov=covenant --cov-report=xml --junitxml=junit/test-results-${{ matrix.python-version }}.xml
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: coverage.xml
+          fail_ci_if_error: false
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts-${{ matrix.python-version }}
+          path: |
+            junit/
+            coverage.xml
+            .pytest_cache
+
+  # -------------------------
+  # Smoke Tests (Workflows)
+  # -------------------------
+  smoke-tests:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.10
+      - name: Install dependencies
+        run: pip install -r requirements.txt || echo "No requirements.txt"
+      - name: Run workflows
+        run: |
+          for wf in workflows/*.py; do
+            echo "Running $wf..."
+            python $wf
+          done
+
+  # -------------------------
+  # Docker Build
+  # -------------------------
+  build-docker:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          tags: covenant-ai-enhanced:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # -------------------------
+  # Security Scan
+  # -------------------------
+  security:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.security == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Security Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install safety==3.6.0 typer==0.9.0 "rich<14"
+      - name: Run Safety Security Scan
+        run: |
+          if [ -f requirements.txt ]; then
+            safety check --disable-audit-and-monitor --full-report -r requirements.txt || exit 1
+          else
+            echo "No requirements.txt found, skipping Safety scan."
+          fi
+      - name: Upload Safety report
+        if: always()
+        run: safety check --full-report -r requirements.txt --json > safety-report.json || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: safety-report
+          path: safety-report.json
+
+  # -------------------------
+  # PR Comment Notification
+  # -------------------------
+  pr-comment:
+    needs: [lint-type, tests, smoke-tests, build-docker, security]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            let comment = `### CI Results\n`;
+            comment += "Lint/Type (3.9-3.11):\n";
+            comment += `- 3.9: ${{ needs.lint-type.result }}\n`;
+            comment += `- 3.10: ${{ needs.lint-type.result }}\n`;
+            comment += `- 3.11: ${{ needs.lint-type.result }}\n`;
+            comment += "Tests (3.9-3.11):\n";
+            comment += `- 3.9: ${{ needs.tests.result }}\n`;
+            comment += `- 3.10: ${{ needs.tests.result }}\n`;
+            comment += `- 3.11: ${{ needs.tests.result }}\n`;
+            comment += `Smoke: ${{ needs.smoke-tests.result }}\n`;
+            comment += `Docker Build: ${{ needs.build-docker.result }}\n`;
+            comment += `Security Scan: ${{ needs.security.result }}\n`;
+            comment += "\n*Full logs and Safety report available in Actions artifacts.*";
+            github.rest.issues.createComment({
+              issue_number: context.payload.pull_request.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
