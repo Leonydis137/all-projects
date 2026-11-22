@@ -245,7 +245,8 @@ def record_evidence(body: EvidenceIn) -> dict:
         if config.DATABASE_URL and hasattr(evidence, "append_with_audit"):
             return evidence.append_with_audit(body.model_dump(), audit)
         result = evidence.append(body.model_dump())
-        audit.record("evidence.append", {"sequence": result["sequence"], "record_hash": result["record_hash"]})
+        if not result.pop("idempotent_replay", False):
+            audit.record("evidence.append", {"sequence": result["sequence"], "record_hash": result["record_hash"]})
         return result
     except EvidenceIntegrityError:
         return JSONResponse(status_code=503, content={"detail": "evidence_integrity_error"})
