@@ -91,3 +91,17 @@ def test_postgres_audit_decode_handles_non_utc_session_timezone(postgres_audit_d
         ).fetchone()
     event = log._decode(row)
     assert event["kind"] == "test.timezone"
+
+
+def test_postgres_audit_snapshot_returns_verified_entries_from_one_read(postgres_audit_dsn):
+    from omnis.postgres_audit import PostgresAuditLog
+
+    log = PostgresAuditLog(postgres_audit_dsn, actor="snapshot-test")
+    marker = uuid4().hex
+    first = log.record("snapshot.first", {"marker": marker})
+    second = log.record("snapshot.second", {"marker": marker})
+    snapshot = log.snapshot(limit=10)
+    assert snapshot["verification"]["valid"] is True
+    hashes = [entry["hash"] for entry in snapshot["entries"]]
+    assert first["hash"] in hashes
+    assert second["hash"] in hashes
