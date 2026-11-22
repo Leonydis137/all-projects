@@ -312,3 +312,18 @@ def test_tenant_evidence_table_enforces_rls_and_immutability(postgres_dsn):
             "SELECT count(*) FROM pg_policies WHERE schemaname = 'omnis' AND tablename = 'tenant_evidence'"
         ).fetchone()[0]
         assert policies == 1
+
+    from omnis.postgres_audit import PostgresAuditLog
+    from omnis.postgres_tenant_evidence import PostgresTenantEvidenceLedger
+
+    tenant, actor = _create_tenant_owner(postgres_dsn, "immut-" + uuid4().hex)
+    row = PostgresTenantEvidenceLedger(postgres_dsn).append_with_audit(
+        _record("immutable-tenant-" + uuid4().hex), tenant, actor,
+        PostgresAuditLog(postgres_dsn),
+    )
+    with pytest.raises(psycopg.Error):
+        with psycopg.connect(postgres_dsn) as db:
+            db.execute(
+                "UPDATE omnis.tenant_evidence SET submitted_by = 'tampered' WHERE tenant_id = %s AND sequence = %s",
+                (tenant, row["sequence"]),
+            )
