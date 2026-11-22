@@ -155,6 +155,11 @@ class PostgresEvidenceLedger:
                             raise EvidenceValidationError(
                                 "idempotency_key was already used for a different evidence record"
                             )
+                        stored_hash = hashlib.sha256(
+                            _canonical({"record": stored, "previous_hash": existing["previous_hash"]})
+                        ).hexdigest()
+                        if stored_hash != existing["record_hash"]:
+                            raise RuntimeError("existing idempotent evidence row failed integrity verification")
                         audit_payload = json.dumps(
                             {"sequence": existing["sequence"], "record_hash": existing["record_hash"]},
                             sort_keys=True, separators=(",", ":"),
