@@ -51,8 +51,11 @@ class PostgresTenantEvidenceLedger:
             if str(row["tenant_id"]) != tenant_id:
                 raise EvidenceIntegrityError("tenant evidence row escaped its tenant scope")
             record = PostgresEvidenceLedger._record(row)
-            clean = _validate({key: value for key, value in record.items()
-                               if key not in {"sequence", "previous_hash", "record_hash", "source_authenticity"}})
+            raw_record = {key: value for key, value in record.items()
+                          if key not in {"sequence", "previous_hash", "record_hash", "source_authenticity"}}
+            clean = _validate(raw_record)
+            if _canonical(raw_record) != _canonical(clean):
+                raise EvidenceIntegrityError("stored tenant evidence record is not canonical")
             return {"tenant_id": tenant_id, **record, **clean}
         except (EvidenceValidationError, EvidenceIntegrityError):
             raise
