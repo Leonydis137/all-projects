@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from . import __version__, assistant, catalog, config, governance, inventory, mathops, sources, stats
 from .audit import audit
 from .decision import Rule, default_engine
+from .evidence import EvidenceLedger, EvidenceValidationError
 from .protocols import AEON, Context
 from .recommend import Recommender
 
@@ -18,6 +19,7 @@ sources.wire()
 app = FastAPI(title="OMNIS", version=__version__, description="All projects, one platform.")
 engine = default_engine()
 aeon = AEON()
+evidence = EvidenceLedger(config.PLATFORM_DIR / "var" / "evidence.sqlite3")
 STATIC = Path(__file__).parent / "static"
 
 
@@ -27,8 +29,7 @@ def auth(authorization: Optional[str] = Header(default=None)) -> None:
 
 
 def gated(kind: str, attrs: Optional[dict] = None) -> dict:
-    """Run an action through the COVENANT gate and audit it. Clients may add
-    attributes (e.g. harm, intent) but cannot override the platform's own evidence."""
+    """Run an action through the COVENANT gate and audit it."""
     action = governance.stamp({"type": kind, **(attrs or {})}, mission="PRIMARY_MISSION", auditable=True, data_provenance=True)
     verdict = governance.evaluate(action)
     audit.record("govern", {"action": kind, "allowed": verdict["allowed"], "violations": verdict["violations"]})
@@ -98,11 +99,20 @@ class ChatIn(Attrs):
     history: list[dict[str, str]] = Field(default_factory=list)
 
 
+class EvidenceIn(BaseModel):
+    source_uri: str
+    content_sha256: str
+    acquired_at: str
+    acquisition_method: str
+    license: str
+    submitted_by: str
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "version": __version__, "sources": str(config.SOURCES), "sources_present": config.SOURCES.is_dir(),
             "import_roots": sources.wire() or "already wired", "audit_chain_valid": audit.verify(),
-            "assistant_configured": bool(config.ANTHROPIC_API_KEY)}
+            "evidence_ledger": evidence.verify(), "assistant_configured": bool(config.ANTHROPIC_API_KEY)}
 
 
 @app.get("/v1/catalog", dependencies=[Depends(auth)])
@@ -199,6 +209,31 @@ async def assistant_chat(body: ChatIn) -> dict:
         return {"reply": await assistant.chat(body.message, body.history)}
     except assistant.AssistantUnavailable as e:
         raise HTTPException(503, str(e))
+
+
+@app.post("/v1/evidence", dependencies=[Depends(auth)])
+def record_evidence(body: EvidenceIn) -> dict:
+    """Record evidence metadata and its content digest; authenticity is not inferred."""
+    try:
+        result = evidence.append(body.model_dump())
+        audit.record("evidence.append", {"sequence": result["sequence"], "record_hash": result["record_hash"]})
+        return result
+    except EvidenceValidationError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/v1/evidence", dependencies=[Depends(auth)])
+def list_evidence(limit: int = 100, before: int | None = None) -> dict:
+    try:
+        return {"records": evidence.list(limit=limit, before=before)}
+    except EvidenceValidationError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/v1/evidence/verify", dependencies=[Depends(auth)])
+def verify_evidence() -> dict:
+    """Verify append-only ledger integrity, not the authenticity of submitted sources."""
+    return evidence.verify()
 
 
 @app.get("/v1/inventory", dependencies=[Depends(auth)])
