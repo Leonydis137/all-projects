@@ -254,38 +254,8 @@ class PostgresAuditLog:
                     "entries": []}
 
     def verify_status(self) -> dict[str, Any]:
-        """Return a reasoned full-chain result; storage failures are not hash failures."""
-        previous_hash = _ZERO_HASH
-        expected_index = 0
-        try:
-            with self._connect(statement_timeout_ms=self.verify_timeout_ms) as db:
-                with db.cursor() as cur:
-                    cur.execute(
-                        """SELECT occurred_at, actor, event_type, payload, previous_hash, event_hash, event_json
-                           FROM omnis.audit_event ORDER BY sequence"""
-                    )
-                    rows = cur.fetchall()
-            for row in rows:
-                try:
-                    event = self._decode(row)
-                except Exception:
-                    return {"valid": False, "reason": "malformed_event",
-                            "failed_index": expected_index}
-                if event["i"] != expected_index or event["prev"] != previous_hash:
-                    return {"valid": False, "reason": "chain_mismatch",
-                            "failed_index": expected_index}
-                expected = hashlib.sha256(_canonical(event)).hexdigest()
-                if row["event_hash"] != expected:
-                    return {"valid": False, "reason": "hash_mismatch",
-                            "failed_index": expected_index}
-                previous_hash = expected
-                expected_index += 1
-            return {"valid": True, "checked": expected_index, "head": previous_hash}
-        except Exception as exc:
-            _LOG.exception("OMNIS audit-chain verification failed")
-            reason = "verification_timeout" if type(exc).__name__ in {"QueryCanceled", "QueryCanceledError"} else "storage_error"
-            return {"valid": False, "reason": reason, "error_type": type(exc).__name__,
-                    "checked": expected_index}
+        """Return the integrity result from the same snapshot used by the audit API."""
+        return self.snapshot(limit=1)["verification"]
 
     def verify(self) -> bool:
         return bool(self.verify_status()["valid"])
