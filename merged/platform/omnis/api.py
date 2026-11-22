@@ -1,6 +1,8 @@
 # Author: Juan-Louw Greyling <juanlouw.greyling@gmail.com>
 """OMNIS gateway: one FastAPI app exposing the features of every merged project."""
 import os
+import threading
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -10,9 +12,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import __version__, assistant, catalog, config, governance, inventory, mathops, sources, stats
-from .audit import audit
+from .audit import audit as memory_audit
+from .postgres_audit import AuditIntegrityError, PostgresAuditLog
 from .decision import Rule, default_engine
 from .evidence import EvidenceLedger, EvidenceValidationError
+from .postgres_evidence import EvidenceIntegrityError, PostgresEvidenceLedger
 from .protocols import AEON, Context
 from .recommend import Recommender
 
@@ -20,8 +24,14 @@ sources.wire()
 app = FastAPI(title="OMNIS", version=__version__, description="All projects, one platform.")
 engine = default_engine()
 aeon = AEON()
-evidence = EvidenceLedger(os.environ.get("OMNIS_EVIDENCE_DB", str(config.PLATFORM_DIR / "var" / "evidence.sqlite3")))
+audit = (PostgresAuditLog(config.DATABASE_URL, actor=os.environ.get("OMNIS_AUDIT_ACTOR", "omnis-api"))
+         if config.DATABASE_URL else memory_audit)
+evidence = (PostgresEvidenceLedger(config.DATABASE_URL, audit_log=audit) if config.DATABASE_URL else
+            EvidenceLedger(os.environ.get("OMNIS_EVIDENCE_DB", str(config.PLATFORM_DIR / "var" / "evidence.sqlite3"))))
 STATIC = Path(__file__).parent / "static"
+_HEALTH_CACHE_TTL_SECONDS = 2.0
+_health_lock = threading.Lock()
+_health_cache: dict[str, Any] = {"checked_at": 0.0, "response": None}
 
 
 def auth(authorization: Optional[str] = Header(default=None)) -> None:
@@ -110,30 +120,43 @@ class EvidenceIn(BaseModel):
     acquisition_method: str
     license: str
     submitted_by: str
+    idempotency_key: Optional[str] = None
 
 
 @app.get("/health")
 def health():
-    """Expose integrity failures as an unhealthy HTTP response without leaking internals."""
-    try:
-        audit_valid = bool(audit.verify())
-    except Exception:
-        audit_valid = False
-    try:
-        evidence_status = evidence.verify()
-        if not isinstance(evidence_status, dict) or not isinstance(evidence_status.get("valid"), bool):
-            evidence_status = {"valid": False, "reason": "invalid_verifier_response"}
-    except Exception:
-        evidence_status = {"valid": False, "reason": "verification_error"}
+    """Expose integrity failures without opening a new DB connection per probe."""
+    with _health_lock:
+        now = time.monotonic()
+        cached = _health_cache["response"]
+        if cached is not None and now - _health_cache["checked_at"] < _HEALTH_CACHE_TTL_SECONDS:
+            status_code, payload = cached
+            if status_code == 503:
+                return JSONResponse(status_code=503, content=payload)
+            return payload
 
-    healthy = audit_valid and evidence_status["valid"]
-    payload = {"status": "ok" if healthy else "degraded", "version": __version__,
-               "sources": str(config.SOURCES), "sources_present": config.SOURCES.is_dir(),
-               "import_roots": sources.wire() or "already wired", "audit_chain_valid": audit_valid,
-               "evidence_ledger": evidence_status, "assistant_configured": bool(config.ANTHROPIC_API_KEY)}
-    if not healthy:
-        return JSONResponse(status_code=503, content=payload)
-    return payload
+        try:
+            audit_valid = bool(audit.health() if hasattr(audit, "health") else audit.verify())
+        except Exception:
+            audit_valid = False
+        try:
+            evidence_status = evidence.health() if hasattr(evidence, "health") else evidence.verify()
+            if not isinstance(evidence_status, dict) or not isinstance(evidence_status.get("valid"), bool):
+                evidence_status = {"valid": False, "reason": "invalid_verifier_response"}
+        except Exception:
+            evidence_status = {"valid": False, "reason": "verification_error"}
+
+        healthy = audit_valid and evidence_status["valid"]
+        payload = {"status": "ok" if healthy else "degraded", "version": __version__,
+                   "sources": str(config.SOURCES), "sources_present": config.SOURCES.is_dir(),
+                   "import_roots": sources.wire() or "already wired", "audit_chain_valid": audit_valid,
+                   "evidence_ledger": evidence_status, "assistant_configured": bool(config.ANTHROPIC_API_KEY)}
+        status_code = 200 if healthy else 503
+        _health_cache["checked_at"] = time.monotonic()
+        _health_cache["response"] = (status_code, payload)
+        if not healthy:
+            return JSONResponse(status_code=503, content=payload)
+        return payload
 
 
 @app.get("/v1/catalog", dependencies=[Depends(auth)])
@@ -236,9 +259,14 @@ async def assistant_chat(body: ChatIn) -> dict:
 def record_evidence(body: EvidenceIn) -> dict:
     """Record evidence metadata and its content digest; authenticity is not inferred."""
     try:
+        if config.DATABASE_URL and hasattr(evidence, "append_with_audit"):
+            return evidence.append_with_audit(body.model_dump(), audit)
         result = evidence.append(body.model_dump())
-        audit.record("evidence.append", {"sequence": result["sequence"], "record_hash": result["record_hash"]})
+        if not result.pop("idempotent_replay", False):
+            audit.record("evidence.append", {"sequence": result["sequence"], "record_hash": result["record_hash"]})
         return result
+    except EvidenceIntegrityError:
+        return JSONResponse(status_code=503, content={"detail": "evidence_integrity_error"})
     except EvidenceValidationError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -247,6 +275,8 @@ def record_evidence(body: EvidenceIn) -> dict:
 def list_evidence(limit: int = 100, before: int | None = None) -> dict:
     try:
         return {"records": evidence.list(limit=limit, before=before)}
+    except EvidenceIntegrityError:
+        return JSONResponse(status_code=503, content={"detail": "evidence_integrity_error"})
     except EvidenceValidationError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -267,7 +297,23 @@ def get_inventory() -> dict:
 
 @app.get("/v1/audit", dependencies=[Depends(auth)])
 def get_audit(limit: int = 50) -> dict:
-    return {"valid": audit.verify(), "entries": audit.entries[-limit:]}
+    try:
+        if hasattr(audit, "snapshot"):
+            result = audit.snapshot(limit=limit)
+            verification = result["verification"]
+            payload = {"valid": verification["valid"], "verification": verification,
+                       "entries": result["entries"]}
+            if not verification["valid"]:
+                return JSONResponse(status_code=503, content=payload)
+            return payload
+        verification = {"valid": audit.verify()}
+        return {"valid": verification["valid"], "verification": verification,
+                "entries": audit.list(limit=limit)}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except AuditIntegrityError:
+        return JSONResponse(status_code=503, content={"valid": False, "entries": [],
+                                                      "reason": "audit_integrity_error"})
 
 
 for _name, _rel in config.STATIC_SITES.items():

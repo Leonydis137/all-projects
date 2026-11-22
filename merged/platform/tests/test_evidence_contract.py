@@ -1,6 +1,7 @@
 """Contract tests for the persistent evidence ledger; no fabricated evidence is inserted."""
 import json
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -129,3 +130,45 @@ def test_api_auth_rejects_missing_or_wrong_bearer_token(monkeypatch):
         api.auth("Bearer wrong")
     assert wrong.value.status_code == 401
     assert api.auth("Bearer test-secret") is None
+
+
+def test_sqlite_idempotent_replay_is_marked(tmp_path):
+    ledger = EvidenceLedger(tmp_path / "evidence.sqlite3")
+    record = {**_record(), "idempotency_key": "request-123"}
+    first = ledger.append(record)
+    retry = ledger.append(record)
+    assert first["sequence"] == retry["sequence"]
+    assert retry["idempotent_replay"] is True
+
+
+def test_concurrent_startup_serializes_legacy_sqlite_column_migration(tmp_path):
+    path = tmp_path / "legacy.sqlite3"
+    with sqlite3.connect(path) as db:
+        db.execute(
+            """CREATE TABLE evidence (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                record_json TEXT NOT NULL,
+                previous_hash TEXT NOT NULL,
+                record_hash TEXT NOT NULL UNIQUE
+            )"""
+        )
+
+    def initialize(_):
+        return EvidenceLedger(path)
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        ledgers = list(pool.map(initialize, range(6)))
+    assert len(ledgers) == 6
+    with sqlite3.connect(path) as db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(evidence)")}
+        indexes = {row[1] for row in db.execute("PRAGMA index_list(evidence)")}
+    assert "idempotency_key" in columns
+    assert "evidence_idempotency_key_uq" in indexes
+
+
+def test_ledger_rejects_malformed_http_uri_as_validation_error(tmp_path):
+    ledger = EvidenceLedger(tmp_path / "evidence.sqlite3")
+    record = _record()
+    record["source_uri"] = "https://[malformed"
+    with pytest.raises(EvidenceValidationError, match="valid absolute HTTP"):
+        ledger.append(record)
