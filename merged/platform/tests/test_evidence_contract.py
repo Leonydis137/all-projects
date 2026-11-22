@@ -31,3 +31,27 @@ def test_ledger_rejects_non_http_source_and_unzoned_timestamp(tmp_path):
     with pytest.raises(EvidenceValidationError):
         ledger.append(record)
     assert ledger.verify()["checked"] == 0
+
+
+def test_api_auth_fails_closed_when_token_is_unset(monkeypatch):
+    from fastapi import HTTPException
+    from omnis import api
+
+    monkeypatch.setattr(api.config, "API_TOKEN", "")
+    with pytest.raises(HTTPException) as exc:
+        api.auth(None)
+    assert exc.value.status_code == 503
+
+
+def test_api_auth_rejects_missing_or_wrong_bearer_token(monkeypatch):
+    from fastapi import HTTPException
+    from omnis import api
+
+    monkeypatch.setattr(api.config, "API_TOKEN", "test-secret")
+    with pytest.raises(HTTPException) as missing:
+        api.auth(None)
+    assert missing.value.status_code == 401
+    with pytest.raises(HTTPException) as wrong:
+        api.auth("Bearer wrong")
+    assert wrong.value.status_code == 401
+    assert api.auth("Bearer test-secret") is None
