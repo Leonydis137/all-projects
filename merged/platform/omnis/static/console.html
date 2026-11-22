@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<!-- Author: Juan-Louw Greyling <juanlouw.greyling@gmail.com> -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OMNIS Console</title>
+<style>
+:root{--bg:#070b14;--panel:#0d1424;--line:#1b2a4a;--text:#d7e3ff;--mute:#7f93bd;--neon:#00b8ff;--ok:#2ee59d;--bad:#ff5d73}
+@media (prefers-color-scheme:light){:root{--bg:#f3f7ff;--panel:#fff;--line:#c9d8f5;--text:#0b1a38;--mute:#52668f;--neon:#0077c8;--ok:#0a9b64;--bad:#c4263f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,Segoe UI,sans-serif}
+header{display:flex;gap:12px;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+h1{font-size:18px;margin:0;color:var(--neon);letter-spacing:.14em}#st{color:var(--mute);font-size:13px;flex:1}
+input,select,textarea,button{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+button{cursor:pointer;border-color:var(--neon);color:var(--neon)}button:hover{background:var(--neon);color:var(--bg)}
+nav{display:flex;gap:6px;padding:10px 20px;flex-wrap:wrap}nav button.on{background:var(--neon);color:var(--bg)}
+main{padding:0 20px 40px;max-width:1100px;margin:auto}section{display:none}section.on{display:block}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}.card b{color:var(--neon)}
+.tag{display:inline-block;font-size:12px;color:var(--mute);border:1px solid var(--line);border-radius:99px;padding:1px 8px;margin:2px 4px 2px 0}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;overflow:auto;max-height:340px}
+label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}textarea{width:100%;min-height:90px;font-family:ui-monospace,monospace}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+</style>
+</head>
+<body>
+<header><h1>OMNIS</h1><span id="st">connecting…</span>
+<input id="tok" type="password" placeholder="API token (if required)" size="18"></header>
+<nav id="nav"></nav>
+<main>
+<section id="catalog"><p id="tot"></p><div class="grid" id="cards"></div></section>
+<section id="govern"><label>Action (JSON) – checked against the ten COVENANT commandments</label>
+<textarea id="g_in">{"mission":"PRIMARY_MISSION","auditable":true,"data_provenance":true,"harm":0,"intent":"neutral"}</textarea>
+<p><button onclick="call('/v1/govern',{action:JSON.parse(v('g_in'))},'g_out')">Evaluate</button></p><pre id="g_out"></pre></section>
+<section id="decide"><label>Context (JSON)</label><textarea id="d_in">{"risk_level": 8}</textarea>
+<div class="row"><button onclick="call('/v1/decide',{context:JSON.parse(v('d_in'))},'d_out')">Decide</button>
+<button onclick="get('/v1/decision/rules','d_out')">List rules</button></div><pre id="d_out"></pre></section>
+<section id="protocols"><div class="row"><select id="p_tone"><option>happy</option><option>relaxed</option><option>frustrated</option><option>anxious</option><option>confident</option><option>neutral</option></select>
+<button onclick="call('/v1/protocols/respond',{emotional_tone:v('p_tone')},'p_out')">Respond</button></div><pre id="p_out"></pre></section>
+<section id="stats"><div class="row">A conv <input id="ca" value="50" size="5"> / n <input id="na" value="1000" size="6">
+B conv <input id="cb" value="70" size="5"> / n <input id="nb" value="1000" size="6">
+<button onclick="call('/v1/stats/ab',{conv_a:+v('ca'),n_a:+v('na'),conv_b:+v('cb'),n_b:+v('nb')},'s_out')">Bayesian A/B</button></div><pre id="s_out"></pre></section>
+<section id="assistant"><label>Message (governed Claude chat – needs ANTHROPIC_API_KEY on the server)</label>
+<textarea id="a_in">What can this platform do?</textarea><p><button onclick="call('/v1/assistant',{message:v('a_in')},'a_out')">Send</button></p><pre id="a_out"></pre></section>
+<section id="audit"><p><button onclick="get('/v1/audit','au_out')">Refresh</button></p><pre id="au_out"></pre></section>
+</main>
+<script>
+const $=id=>document.getElementById(id),v=id=>$(id).value;
+const tabs=['catalog','govern','decide','protocols','stats','assistant','audit'];
+$('nav').innerHTML=tabs.map(t=>`<button data-t="${t}">${t}</button>`).join('');
+$('nav').onclick=e=>{const t=e.target.dataset.t;if(!t)return;tabs.forEach(x=>{$(x).classList.toggle('on',x===t)});
+ [...$('nav').children].forEach(b=>b.classList.toggle('on',b.dataset.t===t));if(t==='catalog')loadCatalog()};
+const hdr=()=>({'Content-Type':'application/json',...(v('tok')?{Authorization:'Bearer '+v('tok')}:{})});
+async function show(r,out){const t=await r.text();let j;try{j=JSON.stringify(JSON.parse(t),null,2)}catch{j=t}
+ $(out).textContent=r.status+' '+(r.ok?'OK':'ERROR')+'\n'+j;$(out).className=r.ok?'ok':'bad'}
+const call=async(p,b,o)=>{try{show(await fetch(p,{method:'POST',headers:hdr(),body:JSON.stringify(b)}),o)}catch(e){$(o).textContent=e}};
+const get=async(p,o)=>show(await fetch(p,{headers:hdr()}),o);
+const kb=n=>n>1e6?(n/1e6).toFixed(1)+' MB':(n/1e3).toFixed(0)+' KB';
+async function loadCatalog(){const r=await fetch('/v1/catalog',{headers:hdr()});if(!r.ok){$('tot').textContent='catalog: HTTP '+r.status;return}
+ const d=await r.json(),t=d.totals;$('tot').textContent=`${d.projects.length} projects · ${t.files} files · ${kb(t.bytes)} · ${t['loc:Python']||0} Python / ${t['loc:TypeScript']||0} TypeScript lines`;
+ $('cards').innerHTML=d.projects.map(p=>`<div class="card"><b>${p.path.split('/').pop()}</b><br><span style="color:var(--mute)">${p.summary}</span><br>
+ ${Object.entries(p.languages||{}).slice(0,3).map(([k,n])=>`<span class="tag">${k} ${n}</span>`).join('')}
+ <br><small>${(p.platform_features||[]).map(f=>`<span class="tag">${f}</span>`).join('')}</small></div>`).join('')}
+fetch('/health').then(r=>r.json()).then(h=>{$('st').textContent=`v${h.version} · audit chain ${h.audit_chain_valid?'valid':'BROKEN'} · assistant ${h.assistant_configured?'ready':'not configured'}`});
+tabs.forEach(x=>$(x).classList.remove('on'));$('catalog').classList.add('on');$('nav').children[0].classList.add('on');loadCatalog();
+</script>
+</body></html>

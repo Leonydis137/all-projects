@@ -1,0 +1,737 @@
+{
+ "projects": [
+  {
+   "path": "apps/web/vantage-ars",
+   "kind": "node",
+   "summary": "Vantage-ARS: public site (v5) + legacy founder workspace (workspace-v2/)",
+   "files": 480,
+   "bytes": 6987313,
+   "languages": {
+    "TypeScript": 310,
+    "Markdown": 48,
+    "JavaScript": 32,
+    "SQL": 20,
+    "JSON": 11,
+    "YAML": 10,
+    "Shell": 7,
+    "HTML": 5,
+    "CSS": 3,
+    "Python": 3
+   },
+   "loc": {
+    "TypeScript": 60924,
+    "JavaScript": 6028,
+    "CSS": 1088,
+    "SQL": 1071,
+    "HTML": 1041,
+    "Python": 657,
+    "Shell": 349
+   },
+   "python": {
+    "files": 3,
+    "classes": 0,
+    "functions": 17,
+    "syntax_errors": 0
+   },
+   "python_deps": {
+    "markdown": 1,
+    "yaml": 1
+   },
+   "todos": 2
+  },
+  {
+   "path": "apps/web/omnigpt-web",
+   "kind": "node",
+   "summary": "OmniGPT web assistant (React + Vite)",
+   "files": 26,
+   "bytes": 17208,
+   "languages": {
+    "TypeScript": 9,
+    "JavaScript": 8,
+    "Markdown": 2,
+    "HTML": 1,
+    "JSON": 1,
+    "CSS": 1,
+    "YAML": 1
+   },
+   "loc": {
+    "TypeScript": 321,
+    "JavaScript": 113,
+    "HTML": 15,
+    "CSS": 4
+   },
+   "python": {
+    "files": 0,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {},
+   "todos": 0
+  },
+  {
+   "path": "apps/web/quantum-flow-os",
+   "kind": "node",
+   "summary": "Quantum Flow OS ethical ontology framework (+ prototypes/vite-ui)",
+   "files": 386,
+   "bytes": 58880386,
+   "languages": {
+    "Markdown": 107,
+    "HTML": 104,
+    "TypeScript": 100,
+    "JavaScript": 35,
+    "JSON": 10,
+    "YAML": 4,
+    "CSS": 4,
+    "Python": 1,
+    "Shell": 1
+   },
+   "loc": {
+    "HTML": 72936,
+    "TypeScript": 23403,
+    "JavaScript": 14397,
+    "CSS": 4294,
+    "Shell": 129,
+    "Python": 76
+   },
+   "python": {
+    "files": 1,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {},
+   "todos": 0
+  },
+  {
+   "path": "apps/web/neural-sovereign",
+   "kind": "node",
+   "summary": "Omni Neural Sovereign AI operating environment",
+   "files": 43,
+   "bytes": 417138,
+   "languages": {
+    "TypeScript": 30,
+    "JSON": 6,
+    "Markdown": 2,
+    "HTML": 1,
+    "CSS": 1
+   },
+   "loc": {
+    "TypeScript": 4224,
+    "CSS": 184,
+    "HTML": 14
+   },
+   "python": {
+    "files": 0,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {},
+   "todos": 0
+  },
+  {
+   "path": "apps/web/project-genesis",
+   "kind": "node",
+   "summary": "Project Genesis autonomous AI lab",
+   "files": 45,
+   "bytes": 353569,
+   "languages": {
+    "TypeScript": 30,
+    "JSON": 4,
+    "Python": 4,
+    "Markdown": 1,
+    "HTML": 1,
+    "CSS": 1,
+    "YAML": 1
+   },
+   "loc": {
+    "TypeScript": 6737,
+    "Python": 683,
+    "HTML": 19,
+    "CSS": 2
+   },
+   "python": {
+    "files": 4,
+    "classes": 7,
+    "functions": 48,
+    "syntax_errors": 0
+   },
+   "python_deps": {
+    "networkx": 2
+   },
+   "todos": 0
+  },
+  {
+   "path": "apps/web/codeevolve-ai",
+   "kind": "node",
+   "summary": "CodeEvolveAI",
+   "files": 96,
+   "bytes": 2303234,
+   "languages": {
+    "TypeScript": 83,
+    "JSON": 5,
+    "JavaScript": 1,
+    "HTML": 1,
+    "CSS": 1
+   },
+   "loc": {
+    "TypeScript": 10260,
+    "CSS": 120,
+    "HTML": 21,
+    "JavaScript": 7
+   },
+   "python": {
+    "files": 0,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {},
+   "todos": 0
+  },
+  {
+   "path": "apps/web/sa-threads",
+   "kind": "node",
+   "summary": "SA Threads online fashion store",
+   "files": 11,
+   "bytes": 23145,
+   "languages": {
+    "TypeScript": 6,
+    "HTML": 1,
+    "JSON": 1
+   },
+   "loc": {
+    "TypeScript": 540,
+    "HTML": 65
+   },
+   "python": {
+    "files": 0,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {},
+   "todos": 0
+  },
+  {
+   "path": "apps/web/hybrid-sat-solver-portal",
+   "kind": "static",
+   "summary": "Hybrid SAT solver benchmark portal",
+   "files": 18,
+   "bytes": 36080,
+   "languages": {
+    "JavaScript": 6,
+    "JSON": 2,
+    "Markdown": 1,
+    "HTML": 1,
+    "CSS": 1
+   },
+   "loc": {
+    "HTML": 886,
+    "JavaScript": 58,
+    "CSS": 17
+   },
+   "python": {
+    "files": 0,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {},
+   "todos": 0
+  },
+  {
+   "path": "apps/web/site-mirror-studio",
+   "kind": "pnpm",
+   "summary": "Site Mirror authorized website archiving tool",
+   "files": 2917,
+   "bytes": 105524150,
+   "languages": {
+    "Markdown": 1153,
+    "TypeScript": 753,
+    "JSON": 205,
+    "Python": 192,
+    "YAML": 77,
+    "JavaScript": 32,
+    "HTML": 20,
+    "Shell": 13,
+    "CSS": 8
+   },
+   "loc": {
+    "TypeScript": 80336,
+    "Python": 53052,
+    "HTML": 6976,
+    "JavaScript": 4673,
+    "CSS": 1376,
+    "Shell": 1357
+   },
+   "python": {
+    "files": 192,
+    "classes": 152,
+    "functions": 1888,
+    "syntax_errors": 0
+   },
+   "python_deps": {
+    "core": 48,
+    "defusedxml": 36,
+    "helpers": 36,
+    "lxml": 28,
+    "pypdf": 28,
+    "design_system": 20,
+    "validate_data": 20,
+    "office": 16,
+    "reasoning_contract": 12,
+    "PIL": 8,
+    "yaml": 4,
+    "validators": 4,
+    "extract_form_field_info": 4,
+    "pdf2image": 4,
+    "pdfplumber": 4
+   },
+   "todos": 0
+  },
+  {
+   "path": "apps/sites/portfolio",
+   "kind": "static",
+   "summary": "Personal GitHub Pages site (+ restricted/ page)",
+   "files": 4,
+   "bytes": 2230,
+   "languages": {
+    "HTML": 2,
+    "Markdown": 1,
+    "YAML": 1
+   },
+   "loc": {
+    "HTML": 27
+   },
+   "python": {
+    "files": 0,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {},
+   "todos": 0
+  },
+  {
+   "path": "apps/sites/jacobsbay-site",
+   "kind": "static",
+   "summary": "Jacobs Bay accommodation site (+ _drafts/)",
+   "files": 262,
+   "bytes": 26988376,
+   "languages": {
+    "CSS": 61,
+    "JavaScript": 23,
+    "JSON": 20,
+    "HTML": 17,
+    "Markdown": 1
+   },
+   "loc": {
+    "CSS": 10058,
+    "HTML": 8511,
+    "JavaScript": 1269
+   },
+   "python": {
+    "files": 0,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {},
+   "todos": 0
+  },
+  {
+   "path": "apps/mobile/synapse-os",
+   "kind": "android",
+   "summary": "Synapse OS Android app (Kotlin)",
+   "files": 42,
+   "bytes": 11648831,
+   "languages": {
+    "Kotlin": 8,
+    "Markdown": 1,
+    "JSON": 1
+   },
+   "loc": {
+    "Kotlin": 614
+   },
+   "python": {
+    "files": 0,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {},
+   "todos": 0
+  },
+  {
+   "path": "apps/mobile/chatgpt-android-os",
+   "kind": "android",
+   "summary": "ChatGPT Android OS starter",
+   "files": 13,
+   "bytes": 4163,
+   "languages": {
+    "Kotlin": 4,
+    "Markdown": 1
+   },
+   "loc": {
+    "Kotlin": 91
+   },
+   "python": {
+    "files": 0,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {},
+   "todos": 0
+  },
+  {
+   "path": "apps/mobile/omnigpt-mobile",
+   "kind": "expo",
+   "summary": "OmniGPT React Native / Expo",
+   "files": 4,
+   "bytes": 4410,
+   "languages": {
+    "Markdown": 1,
+    "JSON": 1,
+    "YAML": 1
+   },
+   "loc": {},
+   "python": {
+    "files": 0,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {},
+   "todos": 0
+  },
+  {
+   "path": "services/covenant",
+   "kind": "python",
+   "summary": "COVENANT constitutional multi-agent platform: V5 backend/frontend + merged covenant-ai and covenant-enterprise modules (agents, 10 commandments, zero-trust, optimizer)",
+   "dir": "services/covenant/backend",
+   "files": 196,
+   "bytes": 746280,
+   "languages": {
+    "Python": 107,
+    "Markdown": 19,
+    "YAML": 16,
+    "TypeScript": 11,
+    "JavaScript": 2,
+    "JSON": 2,
+    "Shell": 2,
+    "HTML": 1,
+    "CSS": 1
+   },
+   "loc": {
+    "Python": 12059,
+    "TypeScript": 416,
+    "Shell": 83,
+    "JavaScript": 23,
+    "CSS": 15,
+    "HTML": 14
+   },
+   "python": {
+    "files": 107,
+    "classes": 126,
+    "functions": 435,
+    "syntax_errors": 0
+   },
+   "python_deps": {
+    "fastapi": 18,
+    "pytest": 13,
+    "numpy": 7,
+    "z3": 5,
+    "torch": 5,
+    "pydantic": 5,
+    "cryptography": 5,
+    "prometheus_client": 3,
+    "uvicorn": 3,
+    "sqlalchemy": 3,
+    "pydantic_settings": 2,
+    "strawberry": 2,
+    "jwt": 2,
+    "web3": 2,
+    "eth_account": 2
+   },
+   "todos": 0
+  },
+  {
+   "path": "services/autonomous-ai",
+   "kind": "python",
+   "summary": "GPT-2 + PPO autonomous agent script",
+   "files": 18,
+   "bytes": 35204,
+   "languages": {
+    "Python": 11,
+    "Markdown": 1,
+    "YAML": 1
+   },
+   "loc": {
+    "Python": 660
+   },
+   "python": {
+    "files": 11,
+    "classes": 5,
+    "functions": 21,
+    "syntax_errors": 3
+   },
+   "python_deps": {
+    "numpy": 3,
+    "sklearn": 3,
+    "pandas": 2,
+    "fastapi": 1
+   },
+   "todos": 0
+  },
+  {
+   "path": "services/aeon-engine",
+   "kind": "python",
+   "summary": "AEON conscious context engine",
+   "files": 14,
+   "bytes": 22869,
+   "languages": {
+    "Python": 9,
+    "Markdown": 1
+   },
+   "loc": {
+    "Python": 398
+   },
+   "python": {
+    "files": 9,
+    "classes": 6,
+    "functions": 38,
+    "syntax_errors": 0
+   },
+   "python_deps": {
+    "pkg_resources": 1,
+    "sklearn": 1,
+    "numpy": 1
+   },
+   "todos": 0
+  },
+  {
+   "path": "services/codegenie",
+   "kind": "python",
+   "summary": "Codegenie",
+   "files": 11,
+   "bytes": 108820,
+   "languages": {
+    "Python": 5,
+    "Markdown": 1,
+    "JSON": 1
+   },
+   "loc": {
+    "Python": 1745
+   },
+   "python": {
+    "files": 5,
+    "classes": 9,
+    "functions": 46,
+    "syntax_errors": 0
+   },
+   "python_deps": {
+    "sklearn": 3,
+    "streamlit": 2,
+    "pandas": 2,
+    "numpy": 2,
+    "requests": 2,
+    "psycopg2": 2,
+    "pysat": 2,
+    "plotly": 2,
+    "core_infrastructure": 1,
+    "analytics_engine": 1,
+    "autonomous_agent": 1,
+    "duckduckgo_search": 1,
+    "tensorflow": 1
+   },
+   "todos": 0
+  },
+  {
+   "path": "research/gcd-pvsnp",
+   "kind": "python",
+   "summary": "Geometric-Computational Duality, P vs NP",
+   "files": 11,
+   "bytes": 4064,
+   "languages": {
+    "Markdown": 1,
+    "YAML": 1
+   },
+   "loc": {},
+   "python": {
+    "files": 0,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {},
+   "todos": 0
+  },
+  {
+   "path": "research/circuit-lower-bounds",
+   "kind": "python",
+   "summary": "Circuit lower bounds research platform",
+   "files": 57,
+   "bytes": 2188984,
+   "languages": {
+    "Python": 10,
+    "Markdown": 5,
+    "JSON": 5,
+    "YAML": 2,
+    "HTML": 1
+   },
+   "loc": {
+    "Python": 3434,
+    "HTML": 1734
+   },
+   "python": {
+    "files": 10,
+    "classes": 6,
+    "functions": 41,
+    "syntax_errors": 1
+   },
+   "python_deps": {
+    "reportlab": 10,
+    "numpy": 5,
+    "scipy": 5,
+    "plotly": 4,
+    "matplotlib": 4,
+    "statsmodels": 3,
+    "streamlit": 2,
+    "pandas": 2,
+    "setuptools": 1
+   },
+   "todos": 0
+  },
+  {
+   "path": "research/uuma",
+   "kind": "python",
+   "summary": "UUMA compositional proof-of-work framework",
+   "files": 63,
+   "bytes": 137350,
+   "languages": {
+    "Python": 33,
+    "Markdown": 4,
+    "JSON": 4,
+    "HTML": 1,
+    "YAML": 1
+   },
+   "loc": {
+    "Python": 2246,
+    "HTML": 58
+   },
+   "python": {
+    "files": 33,
+    "classes": 20,
+    "functions": 186,
+    "syntax_errors": 0
+   },
+   "python_deps": {
+    "uuma": 33,
+    "pytest": 14,
+    "cryptography": 10,
+    "setuptools": 1,
+    "bip_utils": 1,
+    "ecdsa": 1,
+    "Crypto": 1,
+    "uuma_native": 1
+   },
+   "todos": 0
+  },
+  {
+   "path": "tools/omgithub",
+   "kind": "node",
+   "summary": "OMGithub automation scripts and workflows (+ _variants/combined)",
+   "files": 105,
+   "bytes": 565919,
+   "languages": {
+    "JavaScript": 52,
+    "Shell": 20,
+    "Markdown": 13,
+    "JSON": 10,
+    "YAML": 2,
+    "CSS": 1,
+    "HTML": 1
+   },
+   "loc": {
+    "JavaScript": 4502,
+    "Shell": 1099,
+    "HTML": 19,
+    "CSS": 10
+   },
+   "python": {
+    "files": 0,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {},
+   "todos": 0
+  },
+  {
+   "path": "tools/self-improving-code-analyzer",
+   "kind": "python",
+   "summary": "Self-improving code analyzer (latest v14)",
+   "files": 6,
+   "bytes": 2915,
+   "languages": {
+    "Python": 4,
+    "Markdown": 1
+   },
+   "loc": {
+    "Python": 89
+   },
+   "python": {
+    "files": 4,
+    "classes": 1,
+    "functions": 10,
+    "syntax_errors": 0
+   },
+   "python_deps": {
+    "setuptools": 1
+   },
+   "todos": 0
+  },
+  {
+   "path": "services/streamlit/discussion-bot",
+   "kind": "python",
+   "summary": "Streamlit chatbot",
+   "files": 7,
+   "bytes": 18419,
+   "languages": {
+    "Markdown": 1,
+    "Python": 1,
+    "JSON": 1
+   },
+   "loc": {
+    "Python": 57
+   },
+   "python": {
+    "files": 1,
+    "classes": 0,
+    "functions": 0,
+    "syntax_errors": 0
+   },
+   "python_deps": {
+    "streamlit": 1,
+    "openai": 1
+   },
+   "todos": 0
+  }
+ ],
+ "totals": {
+  "files": 4835,
+  "bytes": 217021057,
+  "todos": 2,
+  "loc:TypeScript": 187161,
+  "loc:JavaScript": 31070,
+  "loc:CSS": 17168,
+  "loc:SQL": 1071,
+  "loc:HTML": 92336,
+  "loc:Python": 75156,
+  "loc:Shell": 3017,
+  "loc:Kotlin": 705
+ }
+}

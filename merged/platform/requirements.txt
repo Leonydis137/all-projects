@@ -1,0 +1,11 @@
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2
+httpx>=0.27
+numpy>=1.26
+# optional: research analyzers from circuit-lower-bounds
+scipy>=1.11
+statsmodels>=0.14
+# needed by the merged COVENANT package imports
+cryptography>=42
+pytest>=8

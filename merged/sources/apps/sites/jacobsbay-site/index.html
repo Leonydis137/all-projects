@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Jacobsbay Accommodation - Relax and unwind in beautiful coastal comfort.">
+    <meta name="keywords" content="Jacobsbay, accommodation, coastal stay, vacation rental, South Africa">
+    <meta name="author" content="Jacobsbay Accommodation">
+    <title>Jacobsbay Accommodation</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preload" href="hero.jpg" as="image">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"> <!-- Font Awesome for icons -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+        header {
+            background: #00796b;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        nav ul {
+            list-style: none;
+            padding: 0;
+        }
+        nav ul li {
+            display: inline;
+            margin: 0 15px;
+        }
+        nav ul li a {
+            color: white;
+            text-decoration: none;
+        }
+        nav ul li a:hover {
+            text-decoration: underline;
+        }
+        section {
+            padding: 20px;
+            margin: 10px;
+            border-radius: 5px;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+        }
+        .room-list {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+        }
+        .room {
+            flex: 1 1 30%;
+            margin: 10px;
+            text-align: center;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+        }
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            margin: 5px 0;
+        }
+        input, textarea {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        button {
+            background: #00796b;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #005f4d;
+        }
+        footer {
+            background: #00796b;
+            color: white;
+            text-align: center;
+            padding: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Welcome to Jacobsbay Accommodation</h1>
+        <nav>
+            <ul>
+                <li><a href="#home">Home</a></li>
+                <li><a href="#rooms">Rooms</a></li>
+                <li><a href="#gallery">Gallery</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <section id="home">
+        <img src="hero.jpg" alt="Beautiful view of Jacobsbay coastline">
+        <p>Experience tranquility and comfort with our seaside accommodations.</p>
+    </section>
+
+    <section id="rooms">
+        <h2>Our Rooms</h2>
+        <div class="room-list">
+            <div class="room">
+                <img src="room1.jpg" alt="Cozy double room with ocean view">
+                <p>Cozy Double Room - Ocean View</p>
+            </div>
+            <div class="room">
+                <img src="room2.jpg" alt="Spacious family room with garden access">
+                <p>Family Room - Garden Access</p>
+            </div>
+            <div class="room">
+                <img src="room3.jpg" alt="Luxury suite with balcony view">
+                <p>Luxury Suite - Balcony View</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="gallery">
+        <h2>Gallery</h2>
+        <div class="gallery-grid">
+            <img src="gallery1.jpg" alt="Sunset over Jacobsbay">
+            <img src="gallery2.jpg" alt="Jacobsbay beach">
+            <img src="gallery3.jpg" alt="Cozy lounge area">
+            <img src="gallery4.jpg" alt="Dining area with sea view">
+            <img src="gallery5.jpg" alt="Outdoor seating overlooking the beach">
+        </div>
+    </section>
+
+    <section id="contact">
+        <h2>Contact Us</h2>
+        <form action="https://formspree.io/f/YOUR_FORM_ID" method="POST">
+            <label for="name">Name:</label>
+            <input type="text" id="name" name="name" required>
+
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" required>
+
+            <label for="message">Message:</label>
+            <textarea id="message" name="message" required></textarea>
+
+            <button type="submit">Send Message</button>
+        </form>
+    </section>
+
+    <footer>
+        <p>&copy; 2025 Jacobsbay Accommodation. All rights reserved.</p>
+        <a href="#home" style="color: white; text-decoration: none;">Back to top</a>
+    </footer>
+</body>
+</html>

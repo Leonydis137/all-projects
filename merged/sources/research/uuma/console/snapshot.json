@@ -1,0 +1,485 @@
+{
+ "phases": [
+  {
+   "name": "computational",
+   "doc": ""
+  },
+  {
+   "name": "memory_hard_simulated",
+   "doc": "Scrypt-stress phase. NOT Scrypt, NOT Litecoin's PoW."
+  },
+  {
+   "name": "cpu_friendly_simulated",
+   "doc": "Algorithm-switching phase. NOT RandomX."
+  },
+  {
+   "name": "mixing_simulated",
+   "doc": "Byte-mixing phase. NOT CryptoNight, NOT Equihash."
+  },
+  {
+   "name": "asic_resistance_simulated",
+   "doc": "Data-dependent branch phase. NOT ProgPow, NOT KawPow."
+  }
+ ],
+ "status": [
+  [
+   "Phase pipeline",
+   "Implemented, all phases nonce-dependent (fixed \u2014 see below)"
+  ],
+  [
+   "Difficulty evaluator",
+   "Implemented, 7/7 test vectors green"
+  ],
+  [
+   "BIP39/BIP32 derivation",
+   "Implemented, seed vector matches Trezor test vectors"
+  ],
+  [
+   "BIP44 BTC P2PKH encoder",
+   "Implemented, matches published vector + genesis-block provenance test"
+  ],
+  [
+   "BIP84 BTC P2WPKH encoder",
+   "Implemented, matches BIP-84 spec test vector"
+  ],
+  [
+   "BIP44 ETH encoder",
+   "Implemented, matches published vector, EIP-55 checksum verified"
+  ],
+  [
+   "Encrypted vault",
+   "Implemented (scrypt + AES-256-GCM, `rekey`); 11 tests; not externally reviewed"
+  ],
+  [
+   "Stratum V1",
+   "Protocol layer + client only, tested against a local test server; optional verified TLS; not connected to any pool. V2 not started"
+  ],
+  [
+   "Chain backends",
+   "Only the local `uuma-dryrun` chain. Every real chain raises `NotImplementedError`"
+  ],
+  [
+   "Native hot path",
+   "Implemented for the memory-hard buffer fill (optional C extension, parity-tested, ~1.6x on that phase)"
+  ]
+ ],
+ "codemap": [
+  [
+   "native/uuma_native.c",
+   18
+  ],
+  [
+   "uuma/core/algorithm.py",
+   51
+  ],
+  [
+   "uuma/core/difficulty.py",
+   22
+  ],
+  [
+   "uuma/core/phases.py",
+   132
+  ],
+  [
+   "uuma/core/types.py",
+   25
+  ],
+  [
+   "uuma/manager/backend.py",
+   62
+  ],
+  [
+   "uuma/manager/chains.py",
+   33
+  ],
+  [
+   "uuma/manager/cli.py",
+   40
+  ],
+  [
+   "uuma/manager/manager.py",
+   45
+  ],
+  [
+   "uuma/manager/stratum.py",
+   96
+  ],
+  [
+   "uuma/wallet/addresses.py",
+   117
+  ],
+  [
+   "uuma/wallet/hd.py",
+   140
+  ],
+  [
+   "uuma/wallet/vault.py",
+   91
+  ]
+ ],
+ "rerun": {
+  "summary": "89 passed, 0 failed, 1 files skipped",
+  "skipped": [
+   "SKIP test_wallet_vectors (missing No module named 'bip_utils')"
+  ]
+ },
+ "stratum": [
+  [
+   "test_codec_roundtrip_and_framing",
+   true
+  ],
+  [
+   "test_decode_rejects_bad_input",
+   true
+  ],
+  [
+   "test_full_flow_with_notifications_before_reply",
+   true
+  ],
+  [
+   "test_server_error_and_bad_replies_raise",
+   true
+  ],
+  [
+   "test_closed_connection_raises",
+   true
+  ],
+  [
+   "test_tls_verified_connection_works",
+   true
+  ],
+  [
+   "test_tls_untrusted_certificate_rejected",
+   true
+  ]
+ ],
+ "mgr": [
+  [
+   "test_dry_run_finds_and_backend_verifies_share",
+   true
+  ],
+  [
+   "test_backend_rejects_forged_and_unknown_shares",
+   true
+  ],
+  [
+   "test_wrong_password_fails_before_any_work",
+   true
+  ],
+  [
+   "test_exhausted_search_returns_none",
+   true
+  ],
+  [
+   "test_real_chains_are_not_implemented",
+   true
+  ],
+  [
+   "test_secret_never_written_to_ledger",
+   true
+  ],
+  [
+   "test_concurrent_get_job_ids_are_unique",
+   true
+  ]
+ ],
+ "chains": [
+  [
+   "UUMA local dry run",
+   true,
+   "Local research chain. No network, no coins, no value."
+  ],
+  [
+   "Bitcoin",
+   false,
+   "Not a UUMA target: needs its own PoW, block format and pool protocol."
+  ],
+  [
+   "Litecoin",
+   false,
+   "Not a UUMA target: needs its own PoW, block format and pool protocol."
+  ],
+  [
+   "Monero",
+   false,
+   "Not a UUMA target: needs its own PoW, block format and pool protocol."
+  ],
+  [
+   "Ethereum Classic",
+   false,
+   "Not a UUMA target: needs its own PoW, block format and pool protocol."
+  ],
+  [
+   "Zcash",
+   false,
+   "Not a UUMA target: needs its own PoW, block format and pool protocol."
+  ]
+ ],
+ "vault": [
+  [
+   "test_roundtrip",
+   true
+  ],
+  [
+   "test_wrong_password_rejected",
+   true
+  ],
+  [
+   "test_fresh_salt_and_nonce_each_seal",
+   true
+  ],
+  [
+   "test_ciphertext_tamper_rejected",
+   true
+  ],
+  [
+   "test_header_tamper_rejected",
+   true
+  ],
+  [
+   "test_weak_or_huge_kdf_params_rejected",
+   true
+  ],
+  [
+   "test_empty_password_rejected",
+   true
+  ],
+  [
+   "test_malformed_blob_rejected",
+   true
+  ],
+  [
+   "test_file_roundtrip_mode_0600_no_plaintext",
+   true
+  ],
+  [
+   "test_rekey_changes_password_and_keeps_secret",
+   true
+  ],
+  [
+   "test_rekey_with_wrong_old_password_leaves_file_intact",
+   true
+  ]
+ ],
+ "ab": {
+  "python": "3.12.3",
+  "cpu_count": 1,
+  "iterations": 200,
+  "runs": 5,
+  "pure_mean_s": 0.0017988154459999315,
+  "native_mean_s": 0.0011237492420000023,
+  "speedup_per_run": [
+   1.5723818457379883,
+   1.4097221731608547,
+   1.811617296262666,
+   1.684213868561763,
+   1.5583114960065352
+  ],
+  "speedup_mean": 1.6072493359459614,
+  "timestamp_utc": "2026-09-30T05:34:02Z"
+ },
+ "tests": {
+  "test_difficulty.py": [
+   7,
+   0
+  ],
+  "test_native_parity.py": [
+   5,
+   0
+  ],
+  "test_phases.py": [
+   32,
+   0
+  ],
+  "test_wallet_vectors.py": [
+   10,
+   0
+  ]
+ },
+ "summary": "54 passed in 0.46s",
+ "m1": {
+  "reproducibility": {
+   "python_version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+   "platform": "Linux-6.18.44-fc-v37-x86_64-with-glibc2.39",
+   "processor": "x86_64",
+   "cpu_count": 1,
+   "warmup_iterations": 20,
+   "iterations_per_phase_per_run": 200,
+   "independent_runs": 5,
+   "peak_rss_kb": 18276,
+   "timestamp_utc": "2026-09-20T22:25:04Z"
+  },
+  "per_phase": {
+   "computational": {
+    "mean_seconds": 1.6319599998837474e-06,
+    "median_seconds": 1.620999995566308e-06,
+    "p95_seconds": 1.6860000044971457e-06,
+    "stdev_seconds": 5.185531105637762e-08,
+    "ops_per_sec": 612760.1167131761
+   },
+   "memory_hard_simulated": {
+    "mean_seconds": 0.0015105820650000367,
+    "median_seconds": 0.0015094365000081211,
+    "p95_seconds": 0.00170874799999865,
+    "stdev_seconds": 0.0001329353640064234,
+    "ops_per_sec": 661.9964735249096
+   },
+   "cpu_friendly_simulated": {
+    "mean_seconds": 1.2272185000057334e-05,
+    "median_seconds": 1.203050000242456e-05,
+    "p95_seconds": 1.3399000010849704e-05,
+    "stdev_seconds": 1.620825632085701e-06,
+    "ops_per_sec": 81485.08191453504
+   },
+   "mixing_simulated": {
+    "mean_seconds": 0.00011492215999965083,
+    "median_seconds": 0.00011333799999846406,
+    "p95_seconds": 0.0001255139999898347,
+    "stdev_seconds": 4.598662279832968e-06,
+    "ops_per_sec": 8701.541982878136
+   },
+   "asic_resistance_simulated": {
+    "mean_seconds": 2.5460714999923085e-05,
+    "median_seconds": 2.4771500001463664e-05,
+    "p95_seconds": 2.8989000000478882e-05,
+    "stdev_seconds": 2.7500020279533125e-06,
+    "ops_per_sec": 39276.194718138155
+   }
+  },
+  "full_pipeline": {
+   "mean_seconds": 0.0016555827649996503,
+   "median_seconds": 0.001555850499997291,
+   "p95_seconds": 0.002040858000000867,
+   "stdev_seconds": 0.0001803493906838113,
+   "ops_per_sec": 604.0169184777732
+  },
+  "run_to_run_variance": {
+   "computational": {
+    "run_means_seconds": [
+     1.5648299993387127e-06,
+     1.6319599998837474e-06,
+     1.3899350002333221e-06,
+     1.4650699998242089e-06,
+     1.452259999297212e-06
+    ],
+    "stdev_of_run_means_seconds": 9.647097819280375e-08,
+    "relative_spread_pct": 16.126281037140195
+   },
+   "memory_hard_simulated": {
+    "run_means_seconds": [
+     0.0015275252949998475,
+     0.0015105820650000367,
+     0.0014686871949989922,
+     0.001534625389999391,
+     0.00144685046000113
+    ],
+    "stdev_of_run_means_seconds": 3.8230839241542124e-05,
+    "relative_spread_pct": 5.860828018420635
+   },
+   "cpu_friendly_simulated": {
+    "run_means_seconds": [
+     1.449210000032508e-05,
+     1.2272185000057334e-05,
+     1.2407615001137629e-05,
+     1.2392324999552784e-05,
+     1.2288694999469386e-05
+    ],
+    "stdev_of_run_means_seconds": 9.642435217446352e-07,
+    "relative_spread_pct": 17.38303432520311
+   },
+   "mixing_simulated": {
+    "run_means_seconds": [
+     0.00013668636500064224,
+     0.00011492215999965083,
+     0.00011608619000021748,
+     0.0001338468850000396,
+     0.00012406173500011163
+    ],
+    "stdev_of_run_means_seconds": 9.958224082415917e-06,
+    "relative_spread_pct": 17.394572393838338
+   },
+   "asic_resistance_simulated": {
+    "run_means_seconds": [
+     2.6538045000492616e-05,
+     2.5460714999923085e-05,
+     2.5687489999839386e-05,
+     2.665714000002595e-05,
+     2.531996000001868e-05
+    ],
+    "stdev_of_run_means_seconds": 6.224154502445493e-07,
+    "relative_spread_pct": 5.1563529709982685
+   },
+   "full_pipeline": {
+    "run_means_seconds": [
+     0.0018715846949999104,
+     0.0016555827649996503,
+     0.001570213009999364,
+     0.0016648974199998889,
+     0.0015945669449998689
+    ],
+    "stdev_of_run_means_seconds": 0.00011885758395315772,
+    "relative_spread_pct": 18.0314275872632
+   }
+  },
+  "note": "headline per_phase/full_pipeline are from the median-of-5 run by full-pipeline mean; run_to_run_variance reports the mean of each of the 5 independent runs so stability can be judged. cpu_count reflects this container's single vCPU: absolute throughput numbers do not generalize to multi-core hosts."
+ },
+ "m2": {
+  "reproducibility": {
+   "python_version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+   "platform": "Linux-6.18.44-fc-v37-x86_64-with-glibc2.39",
+   "processor": "x86_64",
+   "cpu_count": 1,
+   "warmup_iterations": 20,
+   "iterations": 200,
+   "timestamp_utc": "2026-09-20T22:20:17Z"
+  },
+  "memory_hard_python": {
+   "mean_seconds": 0.0015865357300000938,
+   "median_seconds": 0.0016170485000088775,
+   "p95_seconds": 0.0016553099999896403,
+   "stdev_seconds": 9.294099169784273e-05,
+   "ops_per_sec": 630.3041154956786
+  },
+  "memory_hard_native": {
+   "mean_seconds": 0.0010379722650003488,
+   "median_seconds": 0.0010845529999983228,
+   "p95_seconds": 0.0011251260000051388,
+   "stdev_seconds": 9.034930403382418e-05,
+   "ops_per_sec": 963.4168789660906
+  },
+  "speedup_mean": 1.5284953013648788,
+  "note": "Only the per-round buffer-fill loop was ported to C (uuma_native.mix_buffer); the hashlib.scrypt() calls inside the phase are unchanged in both variants, since scrypt is already a C call into OpenSSL via CPython's _hashlib. Profiling showed the buffer-fill loop and the scrypt calls were roughly comparable in cost (~1ms each of ~1.87ms total) before this change, so speedup on the buffer-fill loop alone translates to a partial, not full, speedup on the phase."
+ },
+ "probe": {
+  "input": "uuma-console-probe",
+  "rows": [
+   {
+    "nonce": 0,
+    "digest": "0a3a7ed3e790763d12e963e32b1bbec3d4a5faf203ea936b1165071e3136f8f7",
+    "us": 1393.5,
+    "zero_bits": 4
+   },
+   {
+    "nonce": 1,
+    "digest": "c92fa98a9deccd0eaca9c7694ee41eab85163cf5c799a9acf59fa103b77c11dc",
+    "us": 1238.9,
+    "zero_bits": 0
+   },
+   {
+    "nonce": 2,
+    "digest": "578122a5eec8f230102741dec2a7a96485007469483a73c909b41071c7f4198c",
+    "us": 1313.2,
+    "zero_bits": 1
+   }
+  ],
+  "py": "3.12.3",
+  "at": "2026-09-30T05:52:18Z",
+  "phases": [
+   "computational",
+   "memory_hard_simulated",
+   "cpu_friendly_simulated",
+   "mixing_simulated",
+   "asic_resistance_simulated"
+  ]
+ }
+}

@@ -1,0 +1,7 @@
+# Author: Juan-Louw Greyling <juanlouw.greyling@gmail.com>
+services:
+  omnis:
+    build: { context: .., dockerfile: platform/Dockerfile }
+    ports: ["8080:8080"]
+    env_file: [.env]
+    restart: unless-stopped

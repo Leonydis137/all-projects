@@ -3,6 +3,8 @@
 Unified monorepo of all projects by **Juan-Louw Greyling** (juanlouw.greyling@gmail.com).
 Full history of every original repo is preserved.
 
+**New: [`merged/`](./merged)** holds a verbatim copy of everything (`merged/sources`) plus **OMNIS** (`merged/platform`), one platform that combines the projects' features behind a single API and console.
+
 | Area | What lives here |
 |---|---|
 | `apps/web` | React/TS web apps: Vantage-ARS, OmniGPT, Quantum Flow OS, Neural Sovereign, Project Genesis, CodeEvolveAI, Site Mirror Studio, SA Threads, SAT portal |

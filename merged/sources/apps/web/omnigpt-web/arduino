@@ -1,0 +1,12 @@
+omnigpt/
+├── public/
+│   └── index.html
+├── src/
+│   ├── App.jsx
+│   ├── index.js
+│   └── services/api.js
+├── tailwind.config.js
+├── postcss.config.js
+├── package.json
+├── .env
+└── vite.config.js

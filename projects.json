@@ -2,6 +2,11 @@
  "author": "Juan-Louw Greyling <juanlouw.greyling@gmail.com>",
  "projects": [
   {
+   "path": "merged/platform",
+   "kind": "python",
+   "summary": "OMNIS: one gateway combining governance, decisions, protocols, stats, recommender, assistant and a catalog of all projects"
+  },
+  {
    "path": "apps/web/vantage-ars",
    "kind": "node",
    "summary": "Vantage-ARS: public site (v5) + legacy founder workspace (workspace-v2/)"
