@@ -20,11 +20,12 @@ _LOG = logging.getLogger(__name__)
 class PostgresEvidenceLedger:
     """Append-only PostgreSQL hash chain using transaction-scoped advisory locking."""
 
-    def __init__(self, dsn: str, connect_factory: Callable[[], Any] | None = None) -> None:
+    def __init__(self, dsn: str, connect_factory: Callable[[], Any] | None = None, *, audit_log=None) -> None:
         if not isinstance(dsn, str) or not dsn.strip():
             raise ValueError("OMNIS_DATABASE_URL must be a non-empty PostgreSQL connection string")
         self.dsn = dsn
         self._connect_factory = connect_factory
+        self._audit_log = audit_log
         self.verify_timeout_ms = int(os.environ.get("OMNIS_DB_VERIFY_TIMEOUT_MS", "300000"))
         if self.verify_timeout_ms < 10_000:
             raise ValueError("OMNIS_DB_VERIFY_TIMEOUT_MS must be at least 10000")
@@ -53,48 +54,10 @@ class PostgresEvidenceLedger:
         }
 
     def append(self, record: dict[str, Any]) -> dict[str, Any]:
-        clean = _validate(record)
-        stamp = datetime.fromisoformat(clean["acquired_at"].replace("Z", "+00:00"))
-        payload_json = json.dumps(clean, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        with self._connect() as db:
-            with db.cursor() as cur:
-                # Serialize appends across processes so two writers cannot fork the chain.
-                cur.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
-                cur.execute("SELECT pg_advisory_xact_lock(hashtext('omnis.evidence'))")
-                if clean.get("idempotency_key"):
-                    cur.execute(
-                        """SELECT sequence, record_json, previous_hash, record_hash
-                           FROM omnis.evidence WHERE idempotency_key = %s""",
-                        (clean["idempotency_key"],),
-                    )
-                    existing = cur.fetchone()
-                    if existing:
-                        stored = existing["record_json"]
-                        if isinstance(stored, str):
-                            stored = json.loads(stored)
-                        if _canonical(stored) != _canonical(clean):
-                            raise EvidenceValidationError(
-                                "idempotency_key was already used for a different evidence record"
-                            )
-                        return self._record(existing)
-                cur.execute("SELECT record_hash FROM omnis.evidence ORDER BY sequence DESC LIMIT 1")
-                previous = cur.fetchone()
-                previous_hash = previous["record_hash"] if previous else "0" * 64
-                digest = hashlib.sha256(_canonical({"record": clean, "previous_hash": previous_hash})).hexdigest()
-                cur.execute(
-                    """INSERT INTO omnis.evidence
-                       (source_uri, content_sha256, acquired_at, acquisition_method,
-                        declared_license, submitted_by, record_json, previous_hash, record_hash, idempotency_key)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
-                       RETURNING sequence""",
-                    (clean["source_uri"], clean["content_sha256"], stamp,
-                     clean["acquisition_method"], clean["license"], clean["submitted_by"],
-                     payload_json, previous_hash, digest, clean.get("idempotency_key")),
-                )
-                sequence = cur.fetchone()["sequence"]
-        return {"sequence": sequence, **clean, "previous_hash": previous_hash,
-                "record_hash": digest, "source_authenticity": "unverified"}
-
+        """Append through the configured audit log; unpaired writes are rejected."""
+        if self._audit_log is None:
+            raise RuntimeError("PostgreSQL evidence writes require an audit log; use append_with_audit")
+        return self.append_with_audit(record, self._audit_log)
 
     def append_with_audit(self, record: dict[str, Any], audit_log) -> dict[str, Any]:
         """Commit evidence and its audit event atomically in one PostgreSQL transaction."""
@@ -120,6 +83,17 @@ class PostgresEvidenceLedger:
                             raise EvidenceValidationError(
                                 "idempotency_key was already used for a different evidence record"
                             )
+                        audit_payload = json.dumps(
+                            {"sequence": existing["sequence"], "record_hash": existing["record_hash"]},
+                            sort_keys=True, separators=(",", ":"),
+                        )
+                        cur.execute(
+                            """SELECT 1 FROM omnis.audit_event
+                               WHERE event_type = 'evidence.append' AND payload = %s::jsonb LIMIT 1""",
+                            (audit_payload,),
+                        )
+                        if cur.fetchone() is None:
+                            raise RuntimeError("existing evidence row has no corresponding audit event")
                         return self._record(existing)
                 cur.execute("SELECT record_hash FROM omnis.evidence ORDER BY sequence DESC LIMIT 1")
                 previous = cur.fetchone()
