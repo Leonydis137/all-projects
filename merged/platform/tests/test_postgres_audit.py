@@ -32,7 +32,7 @@ def test_postgres_audit_append_list_verify(postgres_audit_dsn):
 
     marker = uuid4().hex
     log = PostgresAuditLog(postgres_audit_dsn, actor="integration-test")
-    first = log.record("test.created", {"marker": marker, "count": 1})
+    first = log.record("test.created", {"marker": marker, "count": 1, "large_number": 1e20})
     second = log.record("test.updated", {"marker": marker, "count": 2})
     assert second["prev"] == first["hash"]
     assert second["actor"] == "integration-test"
