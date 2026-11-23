@@ -25,10 +25,17 @@ def _client(monkeypatch, role="operator"):
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant: principal)
     monkeypatch.setattr(api, "tenant_audit", tenant_log)
     monkeypatch.setattr(api, "audit", global_log)
-    monkeypatch.setattr(api.governance, "evaluate", lambda action, context=None: {
-        "allowed": True, "violations": [],
+    evaluated = {}
+    def evaluate(action, context=None):
+        evaluated["action"] = action
+        evaluated["context"] = context
+        return {"allowed": True, "violations": []}
+
+    monkeypatch.setattr(api.governance, "evaluate", evaluate)
+    monkeypatch.setattr(api.mathops, "gcd_lcm", lambda numbers: {
+        "gcd": 6, "lcm": 36,
     })
-    return TestClient(api.app), tenant_log, global_log
+    return TestClient(api.app), tenant_log, global_log, evaluated
 
 
 def _headers():
@@ -39,7 +46,7 @@ def _headers():
 
 
 def test_tenant_decision_is_governed_and_written_to_tenant_audit(monkeypatch):
-    client, tenant_log, global_log = _client(monkeypatch)
+    client, tenant_log, global_log, evaluated = _client(monkeypatch)
     response = client.post(
         "/v1/tenant/decide",
         headers=_headers(),
@@ -52,11 +59,13 @@ def test_tenant_decision_is_governed_and_written_to_tenant_audit(monkeypatch):
     assert kinds == ["http.request.started", "govern", "http.request.completed"]
     assert tenant_log.list()[1]["payload"]["action"] == "tenant.decision"
     assert tenant_log.list()[1]["actor"] == PRINCIPAL_ID
+    assert evaluated["action"]["type"] == "tenant.decision"
+    assert evaluated["context"] == {"risk_level": 9}
     assert global_log.list() == []
 
 
 def test_tenant_operation_cannot_be_used_by_reader_role(monkeypatch):
-    client, tenant_log, global_log = _client(monkeypatch, role="reader")
+    client, tenant_log, global_log, _ = _client(monkeypatch, role="reader")
     response = client.post(
         "/v1/tenant/math/gcd-lcm",
         headers=_headers(),
@@ -72,7 +81,7 @@ def test_tenant_operation_cannot_be_used_by_reader_role(monkeypatch):
 
 
 def test_tenant_math_operation_returns_result_and_tenant_audit(monkeypatch):
-    client, tenant_log, _ = _client(monkeypatch)
+    client, tenant_log, _, _ = _client(monkeypatch)
     response = client.post(
         "/v1/tenant/math/gcd-lcm",
         headers=_headers(),
@@ -86,7 +95,7 @@ def test_tenant_math_operation_returns_result_and_tenant_audit(monkeypatch):
 
 
 def test_tenant_stats_validation_is_preserved(monkeypatch):
-    client, tenant_log, _ = _client(monkeypatch)
+    client, tenant_log, _, _ = _client(monkeypatch)
     response = client.post(
         "/v1/tenant/stats/ab",
         headers=_headers(),
