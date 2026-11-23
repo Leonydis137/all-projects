@@ -17,7 +17,7 @@ _TOKEN_RE = re.compile(r"^omnis_live_[A-Za-z0-9_-]{40,}$")
 _ROLE_PERMISSIONS = {
     "owner": frozenset({"identity:read", "tenant:manage", "members:manage", "credentials:manage", "evidence:read", "evidence:write", "governance:execute", "audit:read", "decision_rules:read", "decision_rules:manage", "assistant:use", "usage:read"}),
     "admin": frozenset({"identity:read", "members:manage", "credentials:manage", "evidence:read", "evidence:write", "governance:execute", "audit:read", "decision_rules:read", "decision_rules:manage", "assistant:use", "usage:read"}),
-    "operator": frozenset({"identity:read", "evidence:read", "evidence:write", "governance:execute", "decision_rules:read", "assistant:use"}),
+    "operator": frozenset({"identity:read", "evidence:read", "evidence:write", "governance:execute", "decision_rules:read", "assistant:use", "usage:read"}),
     "analyst": frozenset({"identity:read", "evidence:read", "governance:execute", "audit:read", "decision_rules:read", "assistant:use"}),
     "reader": frozenset({"identity:read", "evidence:read", "decision_rules:read", "assistant:use"}),
 }
