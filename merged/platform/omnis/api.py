@@ -640,8 +640,14 @@ def _tenant_operation(
 @app.post("/v1/tenant/decide")
 def tenant_decide(body: DecideIn, principal: Principal = Depends(tenant_identity)) -> dict:
     _tenant_operation(principal, "tenant.decision", body.attributes, body.context)
-    decision_engine = default_engine()\n    if tenant_decision_rules is not None:\n        for stored in tenant_decision_rules.list_rules(principal.tenant_id):\n            decision_engine.add_rule(Rule(stored["name"], stored["field"], stored["op"],\n                                          stored["value"], stored["action"], stored["priority"]))\n    return decision_engine.decide(body.context)
-
+    decision_engine = default_engine()
+    if tenant_decision_rules is not None:
+        for stored in tenant_decision_rules.list_rules(principal.tenant_id):
+            decision_engine.add_rule(
+                Rule(stored["name"], stored["field"], stored["op"], stored["value"],
+                     stored["action"], stored["priority"])
+            )
+    return decision_engine.decide(body.context)
 
 @app.post("/v1/tenant/recommend")
 def tenant_recommend(body: RecommendIn, principal: Principal = Depends(tenant_identity)) -> dict:
