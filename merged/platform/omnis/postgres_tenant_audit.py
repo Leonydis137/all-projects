@@ -138,16 +138,17 @@ class PostgresTenantAuditLog:
         )
         return {**body, "hash": digest}
 
-    def record_in_transaction(self, db, tenant_id: str, kind: str,
-                              payload: dict[str, Any], actor: str) -> dict[str, Any]:
-        tenant = self._uuid(tenant_id, "tenant_id")
+    def record_in_transaction(self, db, kind: str, payload: dict[str, Any],
+                              actor: str | None = None) -> dict[str, Any]:
+        tenant = self._uuid(payload.get("tenant_id"), "tenant_id")
         principal = self._uuid(actor, "actor")
         with db.cursor() as cur:
             self._scope(cur, tenant)
             return self._append_cursor(cur, tenant, kind, payload, principal)
 
-    def record(self, tenant_id: str, kind: str, payload: dict[str, Any], actor: str) -> dict[str, Any]:
-        tenant = self._uuid(tenant_id, "tenant_id")
+    def record(self, kind: str, payload: dict[str, Any],
+               actor: str | None = None) -> dict[str, Any]:
+        tenant = self._uuid(payload.get("tenant_id"), "tenant_id")
         principal = self._uuid(actor, "actor")
         with self._connect() as db:
             with db.cursor() as cur:
