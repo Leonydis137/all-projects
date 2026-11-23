@@ -183,7 +183,7 @@ class TenantAdminStore:
         return {"tenant_id": tenant, "principal_id": member, "role": role, "status": status}
 
     def issue_credential(self, tenant_id: str, principal_id: str, label: str,
-                         expires_in_days: int, actor_id: str, audit_log) -> dict[str, Any]:
+                         expires_in_days: int, actor_id: str, actor_role: str, audit_log) -> dict[str, Any]:
         tenant, member, actor = self._uuid(tenant_id), self._uuid(principal_id), self._uuid(actor_id)
         label = label.strip() if isinstance(label, str) else ""
         if not 1 <= len(label) <= 100:
@@ -196,14 +196,17 @@ class TenantAdminStore:
             with db.cursor() as cur:
                 self._lock_tenant(cur, tenant)
                 cur.execute(
-                    """SELECT 1 FROM omnis.tenant_membership m
+                    """SELECT m.role FROM omnis.tenant_membership m
                        JOIN omnis.principal p ON p.principal_id = m.principal_id
                        WHERE m.tenant_id = %s AND m.principal_id = %s
                          AND m.status = 'active' AND p.status = 'active'""",
                     (tenant, member),
                 )
-                if cur.fetchone() is None:
+                membership = cur.fetchone()
+                if membership is None:
                     raise TenantAdminError("active tenant membership not found")
+                if membership["role"] == "owner" and actor_role != "owner":
+                    raise TenantAdminError("only an owner may issue credentials for another owner")
                 expires = datetime.now(timezone.utc) + timedelta(days=expires_in_days)
                 cur.execute(
                     """INSERT INTO omnis.api_credential
@@ -222,13 +225,13 @@ class TenantAdminStore:
                 "label": label, "expires_at": expires.isoformat(), "api_token_once": token}
 
     def revoke_credential(self, tenant_id: str, credential_id: str, actor_id: str,
-                          audit_log) -> dict[str, Any]:
+                          actor_role: str, audit_log) -> dict[str, Any]:
         tenant, credential, actor = self._uuid(tenant_id), self._uuid(credential_id), self._uuid(actor_id)
         with self._connect() as db:
             with db.cursor() as cur:
                 self._lock_tenant(cur, tenant)
                 cur.execute(
-                    """SELECT c.credential_id, c.principal_id, c.revoked_at
+                    """SELECT c.credential_id, c.principal_id, c.revoked_at, m.role
                        FROM omnis.api_credential c
                        JOIN omnis.tenant_membership m ON m.principal_id = c.principal_id
                        WHERE c.credential_id = %s AND c.tenant_id = %s
@@ -238,6 +241,8 @@ class TenantAdminStore:
                 row = cur.fetchone()
                 if not row:
                     raise TenantAdminError("credential not found in this tenant")
+                if row["role"] == "owner" and actor_role != "owner":
+                    raise TenantAdminError("only an owner may revoke another owner's credential")
                 if row["revoked_at"] is None:
                     cur.execute(
                         "UPDATE omnis.api_credential SET revoked_at = now() WHERE credential_id = %s",
