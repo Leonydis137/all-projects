@@ -114,9 +114,9 @@ memberships, role assignments, revocable API credentials, and forced tenant RLS.
 `009_tenant_bound_credentials.sql` binds each credential to exactly one tenant. Tenant credentials
 are high-entropy `omnis_live_...` tokens; only keyed HMAC-SHA256 digests are stored.
 Set `OMNIS_API_KEY_PEPPER` to a separate secret containing at least 32 characters.
-The authenticated identity, membership administration, credential lifecycle, tenant evidence, and tenant source acquisition routes require both a tenant credential and an explicit `X-OMNIS-Tenant` UUID header. Tenant operations are role-gated, row-level secured where supported by PostgreSQL, and audited against the authenticated principal ID.
+The authenticated identity, membership administration, credential lifecycle, tenant evidence, tenant audit, tenant governance, and tenant source acquisition routes require both a tenant credential and an explicit `X-OMNIS-Tenant` UUID header. Tenant operations are role-gated, row-level secured where supported by PostgreSQL, and audited against the authenticated principal ID.
 
-This is a staged rollout: tenant credentials are accepted only by `/v1/identity/me`, `/v1/tenant/*` membership/credential routes, `/v1/tenant/evidence`, and `/v1/tenant/source/*`. The legacy global evidence, governance, and other business endpoints continue to use `OMNIS_API_TOKEN`; they are not tenant-isolated. Do not expose tenant credentials to those routes until their storage, idempotency, authorization, and audit queries enforce tenant boundaries. The migrations create no users, tenants, or credentials automatically; provision
+This is a staged rollout: tenant credentials are accepted only by `/v1/identity/me`, explicitly tenant-aware `/v1/tenant/*` routes, and `/v1/tenant/source/*`. The legacy global evidence, governance, and other business endpoints continue to use `OMNIS_API_TOKEN`; they are not tenant-isolated. Do not expose tenant credentials to those routes until their storage, idempotency, authorization, and audit queries enforce tenant boundaries. The migrations create no users, tenants, or credentials automatically; provision
 them through a separate trusted provisioning connection. The runtime role receives
 only the explicit table privileges documented in `migrations/README.md`; forced RLS
 is enabled for tenant, membership, credential, and tenant-evidence rows.
@@ -162,6 +162,8 @@ Only owners may assign the owner role, modify an existing owner's membership, or
 The database transaction serializes membership changes and prevents demoting or
 suspending the last active owner. New credentials expire after 1-365 days (90 by
 default), are bound to one tenant, stored only as keyed digests, and returned once to the issuer. Suspending a membership revokes all active credentials for that tenant membership; reactivation requires a newly issued token.
+
+Tenant audit and governance are available through `GET /v1/tenant/audit`, `GET /v1/tenant/audit/verify`, and `POST /v1/tenant/govern`. Each tenant has an independent append-only audit chain, protected by forced RLS and a tenant-local event index. Authenticated tenant request lifecycle events and tenant mutations are written to that chain; they are not copied into the global audit chain. The legacy global audit chain remains the operational audit for non-tenant requests. Only owner, admin, and analyst roles receive `audit:read`.
 
 Tenant-aware source acquisition is available through `POST /v1/tenant/source/fetch`.
 COVENANT authorization runs before network access; the resulting signed fetch
