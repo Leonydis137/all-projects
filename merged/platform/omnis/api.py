@@ -611,6 +611,23 @@ def list_tenant_assistant_conversations(limit: int = 50,
         raise HTTPException(503, str(exc)) from exc
 
 
+@app.get("/v1/tenant/assistant/conversations/{conversation_id}")
+def get_tenant_assistant_conversation(
+    conversation_id: str,
+    principal: Principal = Depends(tenant_identity),
+) -> dict:
+    _require_tenant_assistant(principal)
+    try:
+        metadata, messages = _tenant_assistant_store().history(
+            principal.tenant_id, principal.principal_id, conversation_id, limit=100)
+        return {"conversation": metadata, "messages": messages}
+    except TenantConversationError as exc:
+        status = 404 if "not found" in str(exc) else 422
+        raise HTTPException(status, str(exc)) from exc
+    except TenantConversationUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
 @app.post("/v1/tenant/assistant/conversations")
 def create_tenant_assistant_conversation(
     body: TenantAssistantConversationIn,
