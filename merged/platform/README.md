@@ -109,23 +109,16 @@ out-of-band and manage key rotation as an explicit trust change.
 
 ## Tenant identity foundation
 
-Migration `006_tenant_identity.sql` adds PostgreSQL tenants, principals, active
-memberships, role assignments, and revocable API credentials. Tenant credentials
+Migrations `006_tenant_identity.sql` and `008_identity_row_security.sql` add PostgreSQL tenants, principals, active
+memberships, role assignments, revocable API credentials, and forced tenant RLS. Tenant credentials
 are high-entropy `omnis_live_...` tokens; only keyed HMAC-SHA256 digests are stored.
 Set `OMNIS_API_KEY_PEPPER` to a separate secret containing at least 32 characters.
-The authenticated `GET /v1/identity/me` probe and tenant evidence routes require both
-a tenant credential and an explicit `X-OMNIS-Tenant` UUID header. Tenant evidence
-operations are role-gated, row-level secured, and audited against the authenticated
-principal ID.
+The authenticated identity, membership administration, credential lifecycle, tenant evidence, and tenant source acquisition routes require both a tenant credential and an explicit `X-OMNIS-Tenant` UUID header. Tenant operations are role-gated, row-level secured where supported by PostgreSQL, and audited against the authenticated principal ID.
 
-This is a staged rollout: tenant credentials are accepted by the identity probe and
-the dedicated `/v1/tenant/evidence` endpoints only. The legacy global evidence,
-governance, and other business endpoints continue to use `OMNIS_API_TOKEN`; they are
-not tenant-isolated. Do not expose tenant credentials to those routes until their
-storage, idempotency, authorization, and audit queries enforce tenant boundaries. The migration creates no users,
-tenants, or credentials automatically; provision them through a separate trusted
-database-owner process. The runtime database role receives SELECT-only access to
-identity tables.
+This is a staged rollout: tenant credentials are accepted only by `/v1/identity/me`, `/v1/tenant/*` membership/credential routes, `/v1/tenant/evidence`, and `/v1/tenant/source/*`. The legacy global evidence, governance, and other business endpoints continue to use `OMNIS_API_TOKEN`; they are not tenant-isolated. Do not expose tenant credentials to those routes until their storage, idempotency, authorization, and audit queries enforce tenant boundaries. The migrations create no users, tenants, or credentials automatically; provision
+them through a separate trusted provisioning connection. The runtime role receives
+only the explicit table privileges documented in `migrations/README.md`; forced RLS
+is enabled for tenant, membership, credential, and tenant-evidence rows.
 
 
 To create the first tenant and owner credential, use the separate owner-only
@@ -136,7 +129,7 @@ manager immediately. Never use the provisioning DSN as the runtime database URL.
 
 ## Tenant-scoped evidence API
 
-After applying migrations 006 and 007, tenant credentials can use:
+After applying migrations 006 through 008, tenant credentials can use:
 
 - `POST /v1/tenant/evidence` — append evidence as the authenticated principal.
 - `GET /v1/tenant/evidence` — list only the selected tenant's evidence.
@@ -151,3 +144,26 @@ the authenticated principal as the audit actor.
 
 The existing global `/v1/evidence` routes remain on the legacy shared-token path.
 They are not transparently migrated or exposed through tenant credentials.
+
+
+## Tenant administration and source acquisition
+
+After migrations 006-008, tenant owners and admins can manage memberships and API
+credentials using tenant credentials:
+
+- `GET /v1/tenant/members` — list memberships.
+- `POST /v1/tenant/members` — add or reactivate a member by email.
+- `PATCH /v1/tenant/members/{principal_id}` — change role or suspend/reactivate membership.
+- `POST /v1/tenant/credentials` — issue a credential for an active member.
+- `DELETE /v1/tenant/credentials/{credential_id}` — revoke a credential.
+
+Only owners may assign the owner role or modify an existing owner's membership.
+The database transaction serializes membership changes and prevents demoting or
+suspending the last active owner. New credentials expire after 1-365 days (90 by
+default), are stored only as keyed digests, and are returned once to the issuer.
+
+Tenant-aware source acquisition is available through `POST /v1/tenant/source/fetch`.
+COVENANT authorization runs before network access; the resulting signed fetch
+observation is appended to the authenticated tenant's evidence ledger. Retrieve
+the verification key using `GET /v1/tenant/source/attestation-key`. This proves
+what the configured fetcher observed, not publisher authenticity or claim truth.
