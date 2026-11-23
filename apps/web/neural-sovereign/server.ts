@@ -32,7 +32,7 @@ async function startServer() {
 
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ inflate: false, limit: "1mb" }));
 
   // simple request logging
   app.use((req, res, next) => {
