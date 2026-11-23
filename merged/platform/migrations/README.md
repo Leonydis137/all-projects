@@ -11,6 +11,7 @@ Apply migrations in numeric order using a database-owner or migration role befor
 7. `007_tenant_evidence.sql` creates a per-tenant append-only evidence ledger with forced row-level security, per-tenant idempotency, and tenant-local hash chains.
 8. `008_identity_row_security.sql` enforces transaction-local tenant row security on tenant, membership, and API credential tables.
 9. `009_tenant_bound_credentials.sql` binds every API credential to one tenant, safely backfills unambiguous legacy credentials, and updates the RLS policy.
+10. `010_tenant_audit.sql` creates an independent append-only audit chain per tenant with forced RLS.
 
 Example:
 
@@ -24,6 +25,7 @@ psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 006_tenant_identity.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 007_tenant_evidence.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 008_identity_row_security.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 009_tenant_bound_credentials.sql
+psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 010_tenant_audit.sql
 ```
 
 Migration 004 intentionally contains `CREATE INDEX CONCURRENTLY` and must not be wrapped in an explicit transaction. If an interrupted concurrent index build leaves an invalid index, inspect `pg_index.indisvalid`, drop that invalid index with `DROP INDEX CONCURRENTLY omnis.evidence_idempotency_key_uq`, and rerun migration 004.
