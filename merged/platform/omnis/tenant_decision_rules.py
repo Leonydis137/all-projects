@@ -103,7 +103,7 @@ class TenantDecisionRuleStore:
                     """INSERT INTO omnis.tenant_decision_rule
                        (tenant_id, name, field, comparison, value, action, priority, created_by, updated_by)
                        VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
-                       RETURNING rule_id, name, field, operator, value, action, priority,
+                       RETURNING rule_id, name, field, comparison, value, action, priority,
                                  enabled, created_by, updated_by, created_at, updated_at""",
                     (tenant, item["name"], item["field"], item["op"], item["value_json"],
                      item["action"], item["priority"], actor, actor),
@@ -127,7 +127,7 @@ class TenantDecisionRuleStore:
                        SET name = %s, field = %s, comparison = %s, value = %s::jsonb,
                            action = %s, priority = %s, updated_by = %s, updated_at = now()
                        WHERE tenant_id = %s AND rule_id = %s
-                       RETURNING rule_id, name, field, operator, value, action, priority,
+                       RETURNING rule_id, name, field, comparison, value, action, priority,
                                  enabled, created_by, updated_by, created_at, updated_at""",
                     (item["name"], item["field"], item["op"], item["value_json"], item["action"],
                      item["priority"], actor, tenant, identifier),
