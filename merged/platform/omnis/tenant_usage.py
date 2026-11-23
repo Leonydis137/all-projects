@@ -97,7 +97,7 @@ class TenantUsageStore:
                     audit_log.record_in_transaction(
                         db, "tenant.usage.recorded",
                         {"tenant_id": tenant, "operation": operation, "units": 1,
-                         "outcome": outcome, "monthly_accepted": used + (outcome == "accepted"),
+                         "outcome": outcome, "monthly_accepted": used + (1 if outcome == "accepted" else 0),
                          "minute_requests": minute_count + 1},
                         actor=principal)
                     result = {
