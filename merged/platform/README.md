@@ -31,7 +31,7 @@ uvicorn omnis.api:app --host 127.0.0.1 --port 8080
 
 Set `OMNIS_API_TOKEN` to protect API routes. Without `OMNIS_DATABASE_URL`, OMNIS uses
 the persistent SQLite database selected by `OMNIS_EVIDENCE_DB`. To use PostgreSQL,
-apply migrations 001 through 007 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
+apply migrations 001 through 010 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
 DSN for a dedicated runtime role with schema USAGE and SELECT/INSERT privileges only.
 Remote connections require certificate and hostname verification (`sslmode=verify-full`);
 configure the provider CA as the libpq root certificate. The runtime never runs schema
@@ -130,7 +130,7 @@ manager immediately. Never use the provisioning DSN as the runtime database URL.
 
 ## Tenant-scoped evidence API
 
-After applying migrations 006 through 009, tenant credentials can use:
+After applying migrations 006 through 010, tenant credentials can use:
 
 - `POST /v1/tenant/evidence` — append evidence as the authenticated principal.
 - `GET /v1/tenant/evidence` — list only the selected tenant's evidence.
@@ -149,7 +149,7 @@ They are not transparently migrated or exposed through tenant credentials.
 
 ## Tenant administration and source acquisition
 
-After migrations 006-009, tenant owners and admins can manage memberships and API
+After migrations 006-010, tenant owners and admins can manage memberships and API
 credentials using tenant credentials:
 
 - `GET /v1/tenant/members` — list memberships.
