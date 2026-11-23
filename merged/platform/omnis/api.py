@@ -498,6 +498,16 @@ def update_tenant_member(principal_id: str, body: TenantMemberUpdateIn,
         raise HTTPException(503, str(exc)) from exc
 
 
+@app.get("/v1/tenant/credentials")
+def list_tenant_credentials(principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("credentials:manage"):
+        raise HTTPException(403, "tenant role lacks credentials:manage")
+    try:
+        return {"credentials": _tenant_admin_store().list_credentials(principal.tenant_id)}
+    except TenantAdminUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
 @app.post("/v1/tenant/credentials")
 def issue_tenant_credential(body: TenantCredentialIn,
                             principal: Principal = Depends(tenant_identity)) -> dict:
@@ -521,7 +531,7 @@ def revoke_tenant_credential(credential_id: str,
         raise HTTPException(403, "tenant role lacks credentials:manage")
     try:
         return _tenant_admin_store().revoke_credential(
-            principal.tenant_id, credential_id, principal.principal_id, principal.role, audit
+            principal.tenant_id, credential_id, principal.principal_id, principal.role, (tenant_audit or audit)
         )
     except TenantAdminError as exc:
         raise HTTPException(404, str(exc)) from exc
