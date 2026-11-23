@@ -78,6 +78,12 @@ async def audit_api_requests(request: Request, call_next):
         "/v1/tenant/audit",
         "/v1/tenant/audit/verify",
         "/v1/tenant/govern",
+        "/v1/tenant/decide",
+        "/v1/tenant/recommend",
+        "/v1/tenant/protocols/respond",
+        "/v1/tenant/stats/ab",
+        "/v1/tenant/stats/posterior",
+        "/v1/tenant/math/gcd-lcm",
     }
     if path.startswith("/v1/tenant/members/") or path.startswith("/v1/tenant/credentials/"):
         tenant_auth_paths.add(path)
@@ -156,7 +162,7 @@ def tenant_identity(request: Request) -> Principal:
 def gated(kind: str, attrs: Optional[dict] = None, actor: Optional[str] = None,
           tenant_id: Optional[str] = None) -> dict:
     """Run an action through COVENANT and append its decision to the correct audit chain."""
-    action = governance.stamp({"type": kind, **(attrs or {})}, mission="PRIMARY_MISSION", auditable=True, data_provenance=True)
+    action = governance.stamp({**(attrs or {}), "type": kind}, mission="PRIMARY_MISSION", auditable=True, data_provenance=True)
     verdict = governance.evaluate(action)
     payload = {"action": kind, "allowed": verdict["allowed"], "violations": verdict["violations"]}
     if tenant_id:
@@ -535,6 +541,69 @@ def fetch_tenant_source(body: SourceFetchIn,
     except EvidenceIntegrityError:
         return JSONResponse(status_code=503, content={"detail": "tenant_evidence_integrity_error"})
     except EvidenceValidationError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+def _tenant_operation(principal: Principal, kind: str, attributes: Optional[dict] = None) -> None:
+    """Authorize and audit a stateless tenant operation before execution."""
+    if not principal.allows("governance:execute"):
+        raise HTTPException(403, "tenant role lacks governance:execute")
+    gated(
+        kind,
+        {**(attributes or {}), "tenant_id": principal.tenant_id},
+        actor=principal.principal_id,
+        tenant_id=principal.tenant_id,
+    )
+
+
+@app.post("/v1/tenant/decide")
+def tenant_decide(body: DecideIn, principal: Principal = Depends(tenant_identity)) -> dict:
+    _tenant_operation(principal, "tenant.decision", body.attributes)
+    return engine.decide(body.context)
+
+
+@app.post("/v1/tenant/recommend")
+def tenant_recommend(body: RecommendIn, principal: Principal = Depends(tenant_identity)) -> dict:
+    _tenant_operation(principal, "tenant.recommend", body.attributes)
+    recommender = Recommender()
+    try:
+        recommender.fit(body.rows, body.labels)
+        return {"results": recommender.recommend(body.query, body.k)}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post("/v1/tenant/protocols/respond")
+def tenant_protocols_respond(body: RespondIn, principal: Principal = Depends(tenant_identity)) -> dict:
+    _tenant_operation(principal, "tenant.protocol.respond", body.attributes)
+    return aeon.respond(Context(body.emotional_tone, body.user_intent, body.environment_state))
+
+
+@app.post("/v1/tenant/stats/ab")
+def tenant_stats_ab(body: ABIn, principal: Principal = Depends(tenant_identity)) -> dict:
+    _tenant_operation(principal, "tenant.stats.ab")
+    if min(body.n_a, body.n_b) <= 0 or body.conv_a < 0 or body.conv_b < 0 or body.conv_a > body.n_a or body.conv_b > body.n_b:
+        raise HTTPException(422, "need 0 <= conversions <= n and n > 0")
+    return stats.ab_test(**body.model_dump())
+
+
+@app.post("/v1/tenant/stats/posterior")
+def tenant_stats_posterior(body: PosteriorIn, principal: Principal = Depends(tenant_identity)) -> dict:
+    _tenant_operation(principal, "tenant.stats.posterior")
+    if not 0 < body.prior < 1:
+        raise HTTPException(422, "prior must be in (0,1)")
+    return {
+        "posterior": stats.posterior(body.bayes_factor, body.prior),
+        "reading": stats.interpret_bayes_factor(body.bayes_factor),
+    }
+
+
+@app.post("/v1/tenant/math/gcd-lcm")
+def tenant_math_gcd_lcm(body: NumbersIn, principal: Principal = Depends(tenant_identity)) -> dict:
+    _tenant_operation(principal, "tenant.math.gcd_lcm")
+    try:
+        return mathops.gcd_lcm(body.numbers)
+    except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
 
