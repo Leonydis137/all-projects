@@ -367,7 +367,21 @@ def test_tenant_admin_member_lifecycle_and_credential_revocation(postgres_dsn):
     assert authenticated.principal_id == member["principal_id"]
     assert authenticated.role == "reader"
 
-    admin.revoke_credential(tenant, issued["credential_id"], owner, audit)
+    tenant_b, owner_b = _create_tenant_owner(postgres_dsn, "other-" + marker)
+    admin.add_member(
+        tenant_b, "member-" + marker + "@example.test", "Tenant Member", "reader", owner_b, audit
+    )
+    with pytest.raises(InvalidCredential):
+        authenticate_api_key(
+            issued["api_token_once"], tenant_b, dsn=postgres_dsn, pepper=pepper
+        )
+
+    admin.update_member(tenant, member["principal_id"], "reader", "suspended", owner, "owner", audit)
+    with pytest.raises(InvalidCredential):
+        authenticate_api_key(
+            issued["api_token_once"], tenant, dsn=postgres_dsn, pepper=pepper
+        )
+    admin.update_member(tenant, member["principal_id"], "reader", "active", owner, "owner", audit)
     with pytest.raises(InvalidCredential):
         authenticate_api_key(
             issued["api_token_once"], tenant, dsn=postgres_dsn, pepper=pepper
