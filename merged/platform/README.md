@@ -254,6 +254,7 @@ The tenant workspace provides:
 - Current-month request usage and configured monthly quota.
 - Tenant evidence listing and ledger verification (when permitted).
 - Tenant audit event listing and hash-chain verification (when permitted).
+- Owner-only combined verification of the tenant evidence ledger and audit chain, with separate valid, invalid, and unavailable outcomes.
 - Tenant decision-rule listing, creation, and deletion (when permitted).
 - COVENANT-governed tenant decision and AEON protocol operations (when permitted).
 - Tenant assistant conversation creation, history retrieval, and messaging.
