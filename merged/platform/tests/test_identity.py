@@ -195,6 +195,11 @@ def test_tenant_evidence_routes_enforce_role_and_tenant_context(monkeypatch):
         email="reader@example.test", display_name="Reader", role="reader",
         credential_prefix=TOKEN[:32],
     )
+    owner = Principal(
+        tenant_id=tenant, principal_id="3a2b3c4d-5e6f-4789-8abc-123456789abc",
+        email="owner@example.test", display_name="Owner", role="owner",
+        credential_prefix=TOKEN[:32],
+    )
 
     class TenantStore:
         def __init__(self):
@@ -242,6 +247,11 @@ def test_tenant_evidence_routes_enforce_role_and_tenant_context(monkeypatch):
     assert listed.status_code == 200
     assert listed.json()["records"][0]["tenant_id"] == tenant
     assert test_audit.verify()
+    current["principal"] = owner
+    verified = client.get("/v1/tenant/evidence/verify", headers=headers)
+    assert verified.status_code == 200
+    assert verified.json()["valid"] is True
+    assert verified.json()["tenant_id"] == tenant
 
 
 def test_tenant_credential_cannot_access_legacy_global_routes(monkeypatch):

@@ -69,6 +69,7 @@ B conv <input id="cb" value="70" size="5"> / n <input id="nb" value="1000" size=
   </div>
   <div class="tenant-panel" id="tenant_admin_dashboard" hidden>
     <div class="row" style="justify-content:space-between"><h3>ADMINISTRATION OVERVIEW</h3><button id="tenant_overview_refresh">Refresh overview</button></div>
+     <button id="tenant_integrity_verify">Verify evidence and audit integrity</button><pre id="tenant_integrity_status">Run a verification to inspect both tenant hash chains.</pre>
     <div class="tenant-layout">
       <div class="tenant-panel"><span class="tag">TENANT</span><h3 id="tenant_overview_name">—</h3><p id="tenant_overview_slug"></p><p id="tenant_overview_state"></p></div>
       <div class="tenant-panel"><span class="tag">MEMBERS</span><h3 id="tenant_overview_members">—</h3><p id="tenant_overview_owners"></p></div>
@@ -164,7 +165,7 @@ function disconnectTenant(){
   tenantEl('conversations').replaceChildren();tenantEl('messages').replaceChildren();
   tenantEl('members').replaceChildren();tenantEl('credentials').replaceChildren();
   tenantEl('admin_dashboard').hidden=true;tenantEl('admin_workspace').hidden=true;tenantEl('member_editor').hidden=true;tenantEl('credential_editor').hidden=true;
-  ['usage','audit','evidence','operations','chat_status','credential_once'].forEach(id=>{tenantEl(id).textContent='';});
+  ['usage','audit','evidence','integrity_status','operations','chat_status','credential_once'].forEach(id=>{tenantEl(id).textContent='';});
   tenantEl('credential_once').hidden=true;tenantEl('rules').replaceChildren();
   tenantStatus('Disconnected. Tenant credentials and displayed tenant data cleared from this page session.');
 }
@@ -256,6 +257,27 @@ async function loadTenantAudit(){try{tenantPre('audit',await tenantRequest('/v1/
 async function verifyTenantAudit(){try{tenantPre('audit',await tenantRequest('/v1/tenant/audit/verify'))}catch(e){tenantPre('audit',e.message)}}
 async function loadTenantEvidence(){try{tenantPre('evidence',await tenantRequest('/v1/tenant/evidence'))}catch(e){tenantPre('evidence',e.message)}}
 async function verifyTenantEvidence(){try{tenantPre('evidence',await tenantRequest('/v1/tenant/evidence/verify'))}catch(e){tenantPre('evidence',e.message)}}
+async function verifyTenantIntegrity(){
+  if(!tenantSession||!tenantSession.permissions.includes('tenant:manage')||
+     !tenantSession.permissions.includes('evidence:read')||!tenantSession.permissions.includes('audit:read')){
+    tenantPre('integrity_status','Owner permissions are required for the combined integrity check.');
+    return;
+  }
+  tenantPre('integrity_status','Verifying tenant evidence and audit chains…');
+  const checks=await Promise.allSettled([
+    tenantRequest('/v1/tenant/evidence/verify'),
+    tenantRequest('/v1/tenant/audit/verify')
+  ]);
+  const describe=(name,result)=>{
+    if(result.status==='rejected')return name+': UNAVAILABLE · '+result.reason.message;
+    const value=result.value||{};
+    if(value.valid===true)return name+': VALID · '+value.checked+' records checked';
+    if(value.reason==='storage_error'||value.reason==='verification_timeout')return name+': UNAVAILABLE · '+value.reason+' ('+(value.checked||0)+' checked)';
+    return name+': INVALID · '+(value.reason||'integrity verification failed')+' ('+(value.checked||0)+' checked)';
+  };
+  tenantPre('integrity_status','Verification time: '+new Date().toISOString()+'\n'+
+    describe('Evidence ledger',checks[0])+'\n'+describe('Audit chain',checks[1]));
+}
 async function runTenantDecision(){try{const context=JSON.parse(tenantEl('decision_context').value);tenantPre('operations',await tenantRequest('/v1/tenant/decide','POST',{context,attributes:{}}))}catch(e){tenantPre('operations',e.message)}}
 async function runTenantProtocol(){try{tenantPre('operations',await tenantRequest('/v1/tenant/protocols/respond','POST',{emotional_tone:tenantEl('tone').value,attributes:{}}))}catch(e){tenantPre('operations',e.message)}}
 async function loadTenantRules(){
@@ -321,6 +343,7 @@ async function sendTenantMessage(){
   finally{tenantEl('send').disabled=false}
 }
 tenantEl('overview_refresh').addEventListener('click',loadTenantAdminOverview);
+tenantEl('integrity_verify').addEventListener('click',verifyTenantIntegrity);
 tenantEl('members_refresh').addEventListener('click',loadTenantMembers);
 tenantEl('member_add').addEventListener('click',addTenantMember);
 tenantEl('credentials_refresh').addEventListener('click',loadTenantCredentials);
