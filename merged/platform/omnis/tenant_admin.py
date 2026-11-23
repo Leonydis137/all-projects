@@ -79,7 +79,7 @@ class TenantAdminStore:
                 cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant,))
                 cur.execute(
                     """SELECT c.credential_id, c.principal_id, p.email, c.label,
-                              c.token_prefix, c.expires_at, c.revoked_at, c.created_at
+                              c.expires_at, c.revoked_at, c.created_at
                        FROM omnis.api_credential c
                        JOIN omnis.principal p ON p.principal_id = c.principal_id
                        WHERE c.tenant_id = %s
