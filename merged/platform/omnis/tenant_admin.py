@@ -162,8 +162,11 @@ class TenantAdminStore:
                     raise TenantAdminError("only an owner may modify another owner's membership")
                 if current["role"] == "owner" and (role != "owner" or status != "active"):
                     cur.execute(
-                        """SELECT count(*) AS owners FROM omnis.tenant_membership
-                           WHERE tenant_id = %s AND role = 'owner' AND status = 'active'""",
+                        """SELECT count(*) AS owners
+                           FROM omnis.tenant_membership m
+                           JOIN omnis.principal p ON p.principal_id = m.principal_id
+                           WHERE m.tenant_id = %s AND m.role = 'owner'
+                             AND m.status = 'active' AND p.status = 'active'""",
                         (tenant,),
                     )
                     if cur.fetchone()["owners"] <= 1:
