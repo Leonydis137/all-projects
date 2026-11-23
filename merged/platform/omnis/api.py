@@ -274,6 +274,15 @@ class TenantMemberUpdateIn(BaseModel):
     status: str = "active"
 
 
+class TenantDecisionRuleIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    field: str = Field(min_length=1, max_length=128)
+    op: str
+    value: Any
+    action: str = Field(min_length=1, max_length=160)
+    priority: int = Field(default=0, ge=-100000, le=100000)
+
+
 class TenantCredentialIn(BaseModel):
     principal_id: str
     label: str = Field(min_length=1, max_length=100)
