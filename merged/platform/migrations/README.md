@@ -10,6 +10,7 @@ Apply migrations in numeric order using a database-owner or migration role befor
 6. `006_tenant_identity.sql` creates tenants, principals, memberships, and HMAC-digested API credentials.
 7. `007_tenant_evidence.sql` creates a per-tenant append-only evidence ledger with forced row-level security, per-tenant idempotency, and tenant-local hash chains.
 8. `008_identity_row_security.sql` enforces transaction-local tenant row security on tenant, membership, and API credential tables.
+9. `009_tenant_bound_credentials.sql` binds every API credential to one tenant, safely backfills unambiguous legacy credentials, and updates the RLS policy.
 
 Example:
 
@@ -22,13 +23,14 @@ psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 005_case_insensitive_source_uri
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 006_tenant_identity.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 007_tenant_evidence.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 008_identity_row_security.sql
+psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 009_tenant_bound_credentials.sql
 ```
 
 Migration 004 intentionally contains `CREATE INDEX CONCURRENTLY` and must not be wrapped in an explicit transaction. If an interrupted concurrent index build leaves an invalid index, inspect `pg_index.indisvalid`, drop that invalid index with `DROP INDEX CONCURRENTLY omnis.evidence_idempotency_key_uq`, and rerun migration 004.
 
 Migration 005 wraps its constraint replacement in one transaction. If validation finds legacy rows with non-HTTP(S) URIs, the transaction rolls back and the original constraint remains in place; clean those rows before retrying.
 
-Set `OMNIS_DATABASE_URL` only after all eight migrations have completed. This switches both evidence and audit storage from their local fallback implementations to PostgreSQL. During a rolling deployment, drain old application instances before relying on the durable audit chain; older instances do not write to PostgreSQL.
+Set `OMNIS_DATABASE_URL` only after all nine migrations have completed. This switches both evidence and audit storage from their local fallback implementations to PostgreSQL. During a rolling deployment, drain old application instances before relying on the durable audit chain; older instances do not write to PostgreSQL.
 
 ## Application-role provisioning
 
@@ -113,3 +115,12 @@ changes per tenant and prevents demoting or suspending its last active owner. On
 an owner may assign the owner role. The runtime role needs INSERT/UPDATE privileges
 on membership, principal and credential tables as shown above; RLS and explicit
 tenant predicates constrain tenant and credential visibility.
+
+
+Migration 009 binds credentials to the tenant in which they were issued. Existing
+credentials are automatically backfilled only when their principal has exactly one
+membership. If a principal has multiple memberships, the migration deliberately
+fails and requires the operator to decide which tenant owns each old credential;
+do not assign one legacy credential to multiple tenants. After migration 009, every
+credential is tenant-bound and cannot authenticate against another tenant even if
+the principal is a member of both.
