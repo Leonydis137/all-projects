@@ -19,6 +19,7 @@ from .decision import Rule, default_engine
 from .evidence import EvidenceLedger, EvidenceValidationError
 from .postgres_evidence import EvidenceIntegrityError, PostgresEvidenceLedger
 from .postgres_tenant_evidence import PostgresTenantEvidenceLedger
+from .tenant_admin import TenantAdminError, TenantAdminStore, TenantAdminUnavailable
 from .protocols import AEON, Context
 from .recommend import Recommender
 from .identity import IdentityUnavailable, InvalidCredential, Principal, authenticate_api_key
@@ -39,6 +40,7 @@ audit = (PostgresAuditLog(config.DATABASE_URL, actor=os.environ.get("OMNIS_AUDIT
 evidence = (PostgresEvidenceLedger(config.DATABASE_URL, audit_log=audit) if config.DATABASE_URL else
             EvidenceLedger(os.environ.get("OMNIS_EVIDENCE_DB", str(config.PLATFORM_DIR / "var" / "evidence.sqlite3"))))
 tenant_evidence = PostgresTenantEvidenceLedger(config.DATABASE_URL) if config.DATABASE_URL else None
+tenant_admin = (TenantAdminStore(config.DATABASE_URL, os.environ.get('OMNIS_API_KEY_PEPPER', '')) if config.DATABASE_URL and len(os.environ.get('OMNIS_API_KEY_PEPPER', '')) >= 32 else None)
 STATIC = Path(__file__).parent / "static"
 _HEALTH_CACHE_TTL_SECONDS = 2.0
 _health_lock = threading.Lock()
@@ -57,7 +59,7 @@ async def audit_api_requests(request: Request, call_next):
     if not path.startswith("/v1/") or (path == "/v1/audit" and request.method == "GET"):
         return await call_next(request)
 
-    # Tenant credentials are accepted only by tenant-aware identity and evidence routes.
+    # Tenant credentials are accepted only by explicitly tenant-aware routes.
     # All other resource stores remain behind the legacy single-tenant token.
     principal = None
     identity_error = None
@@ -65,7 +67,13 @@ async def audit_api_requests(request: Request, call_next):
         "/v1/identity/me",
         "/v1/tenant/evidence",
         "/v1/tenant/evidence/verify",
+        "/v1/tenant/members",
+        "/v1/tenant/credentials",
+        "/v1/tenant/source/fetch",
+        "/v1/tenant/source/attestation-key",
     }
+    if path.startswith("/v1/tenant/members/") or path.startswith("/v1/tenant/credentials/"):
+        tenant_auth_paths.add(path)
     if path in tenant_auth_paths:
         authorization = request.headers.get("authorization", "")
         scheme, _, token = authorization.partition(" ")
@@ -230,6 +238,22 @@ class TenantEvidenceIn(BaseModel):
     license: str
     idempotency_key: Optional[str] = None
 
+class TenantMemberIn(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    display_name: str = Field(min_length=1, max_length=160)
+    role: str = "reader"
+
+
+class TenantMemberUpdateIn(BaseModel):
+    role: str
+    status: str = "active"
+
+
+class TenantCredentialIn(BaseModel):
+    principal_id: str
+    label: str = Field(min_length=1, max_length=100)
+    expires_in_days: int = Field(default=90, ge=1, le=365)
+
 
 @app.get("/health")
 def health():
@@ -330,6 +354,129 @@ def verify_tenant_evidence(principal: Principal = Depends(tenant_identity)) -> d
     if tenant_evidence is None:
         raise HTTPException(503, "PostgreSQL tenant evidence is not configured")
     return tenant_evidence.verify(principal.tenant_id)
+
+
+
+def _tenant_admin_store() -> TenantAdminStore:
+    if tenant_admin is None:
+        raise HTTPException(503, "tenant administration is not configured")
+    return tenant_admin
+
+
+@app.get("/v1/tenant/members")
+def list_tenant_members(principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("members:manage"):
+        raise HTTPException(403, "tenant role lacks members:manage")
+    try:
+        return {"members": _tenant_admin_store().list_members(principal.tenant_id)}
+    except TenantAdminUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.post("/v1/tenant/members")
+def add_tenant_member(body: TenantMemberIn, principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("members:manage"):
+        raise HTTPException(403, "tenant role lacks members:manage")
+    if body.role == "owner" and principal.role != "owner":
+        raise HTTPException(403, "only an owner may assign the owner role")
+    try:
+        result = _tenant_admin_store().add_member(
+            principal.tenant_id, body.email, body.display_name, body.role, principal.principal_id, audit
+        )
+        return {"member": result}
+    except TenantAdminError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except TenantAdminUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.patch("/v1/tenant/members/{principal_id}")
+def update_tenant_member(principal_id: str, body: TenantMemberUpdateIn,
+                         principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("members:manage"):
+        raise HTTPException(403, "tenant role lacks members:manage")
+    if body.role == "owner" and principal.role != "owner":
+        raise HTTPException(403, "only an owner may assign the owner role")
+    try:
+        result = _tenant_admin_store().update_member(
+            principal.tenant_id, principal_id, body.role, body.status, principal.principal_id, principal.role, audit
+        )
+        return {"member": result}
+    except TenantAdminError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except TenantAdminUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.post("/v1/tenant/credentials")
+def issue_tenant_credential(body: TenantCredentialIn,
+                            principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("credentials:manage"):
+        raise HTTPException(403, "tenant role lacks credentials:manage")
+    try:
+        return _tenant_admin_store().issue_credential(
+            principal.tenant_id, body.principal_id, body.label, body.expires_in_days,
+            principal.principal_id, audit,
+        )
+    except TenantAdminError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except TenantAdminUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.delete("/v1/tenant/credentials/{credential_id}")
+def revoke_tenant_credential(credential_id: str,
+                             principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("credentials:manage"):
+        raise HTTPException(403, "tenant role lacks credentials:manage")
+    try:
+        return _tenant_admin_store().revoke_credential(
+            principal.tenant_id, credential_id, principal.principal_id, audit
+        )
+    except TenantAdminError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except TenantAdminUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.get("/v1/tenant/source/attestation-key")
+def get_tenant_source_attestation_key(principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("identity:read"):
+        raise HTTPException(403, "tenant role lacks identity:read")
+    try:
+        return public_key_document()
+    except SourceConfigurationError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.post("/v1/tenant/source/fetch")
+def fetch_tenant_source(body: SourceFetchIn,
+                        principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("evidence:write") or not principal.allows("governance:execute"):
+        raise HTTPException(403, "tenant role lacks source acquisition permissions")
+    if tenant_evidence is None:
+        raise HTTPException(503, "PostgreSQL tenant evidence is not configured")
+    try:
+        gated("tenant.source.fetch", {"tenant_id": principal.tenant_id,
+                                      "source_uri": body.source_uri}, actor=principal.principal_id)
+        record, acquisition = acquire_and_attest(
+            body.source_uri, body.license,
+            os.environ.get("OMNIS_SOURCE_FETCHER_ID", "omnis-source-fetcher"),
+        )
+        stored = tenant_evidence.append_with_audit(
+            record, principal.tenant_id, principal.principal_id, audit
+        )
+        return {"record": stored, "acquisition": acquisition}
+    except SourcePolicyError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except SourceConfigurationError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except SourceUnavailable as exc:
+        raise HTTPException(502, str(exc)) from exc
+    except EvidenceIntegrityError:
+        return JSONResponse(status_code=503, content={"detail": "tenant_evidence_integrity_error"})
+    except EvidenceValidationError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @app.get("/v1/catalog", dependencies=[Depends(auth)])
