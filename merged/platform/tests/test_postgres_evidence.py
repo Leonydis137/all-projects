@@ -136,7 +136,8 @@ def test_evidence_and_audit_commit_atomically(postgres_dsn):
             (str(appended["sequence"]), appended["record_hash"]),
         ).fetchone()[0]
     assert paired_events == 1
-    assert audit.verify() is True
+    assert audit.verify(tenant_a)["valid"] is True
+    assert audit.verify(tenant_b)["valid"] is True
 
 
 def test_postgres_evidence_idempotency(postgres_dsn):
@@ -270,13 +271,13 @@ def _create_tenant_owner(dsn: str, marker: str) -> tuple[str, str]:
 
 
 def test_tenant_evidence_isolation_idempotency_and_audit(postgres_dsn):
-    from omnis.postgres_audit import PostgresAuditLog
+    from omnis.postgres_tenant_audit import PostgresTenantAuditLog
     from omnis.postgres_tenant_evidence import PostgresTenantEvidenceLedger
 
     marker = uuid4().hex
     tenant_a, actor_a = _create_tenant_owner(postgres_dsn, "a" + marker)
     tenant_b, actor_b = _create_tenant_owner(postgres_dsn, "b" + marker)
-    audit = PostgresAuditLog(postgres_dsn)
+    audit = PostgresTenantAuditLog(postgres_dsn)
     ledger = PostgresTenantEvidenceLedger(postgres_dsn)
     key = "tenant-retry-" + marker
 
