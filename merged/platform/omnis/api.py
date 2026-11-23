@@ -160,10 +160,10 @@ def tenant_identity(request: Request) -> Principal:
 
 
 def gated(kind: str, attrs: Optional[dict] = None, actor: Optional[str] = None,
-          tenant_id: Optional[str] = None) -> dict:
+          tenant_id: Optional[str] = None, context: Optional[dict] = None) -> dict:
     """Run an action through COVENANT and append its decision to the correct audit chain."""
     action = governance.stamp({**(attrs or {}), "type": kind}, mission="PRIMARY_MISSION", auditable=True, data_provenance=True)
-    verdict = governance.evaluate(action)
+    verdict = governance.evaluate(action, context)
     payload = {"action": kind, "allowed": verdict["allowed"], "violations": verdict["violations"]}
     if tenant_id:
         payload["tenant_id"] = tenant_id
@@ -544,7 +544,12 @@ def fetch_tenant_source(body: SourceFetchIn,
         raise HTTPException(422, str(exc)) from exc
 
 
-def _tenant_operation(principal: Principal, kind: str, attributes: Optional[dict] = None) -> None:
+def _tenant_operation(
+    principal: Principal,
+    kind: str,
+    attributes: Optional[dict] = None,
+    context: Optional[dict] = None,
+) -> None:
     """Authorize and audit a stateless tenant operation before execution."""
     if not principal.allows("governance:execute"):
         raise HTTPException(403, "tenant role lacks governance:execute")
@@ -553,12 +558,13 @@ def _tenant_operation(principal: Principal, kind: str, attributes: Optional[dict
         {**(attributes or {}), "tenant_id": principal.tenant_id},
         actor=principal.principal_id,
         tenant_id=principal.tenant_id,
+        context=context,
     )
 
 
 @app.post("/v1/tenant/decide")
 def tenant_decide(body: DecideIn, principal: Principal = Depends(tenant_identity)) -> dict:
-    _tenant_operation(principal, "tenant.decision", body.attributes)
+    _tenant_operation(principal, "tenant.decision", body.attributes, body.context)
     return engine.decide(body.context)
 
 
