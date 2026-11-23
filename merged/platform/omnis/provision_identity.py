@@ -75,9 +75,9 @@ def main() -> int:
                 )
                 cur.execute(
                     """INSERT INTO omnis.api_credential
-                       (principal_id, token_prefix, token_digest, label)
-                       VALUES (%s, %s, %s, %s)""",
-                    (principal_id, token[:32], digest, label),
+                       (tenant_id, principal_id, token_prefix, token_digest, label)
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (tenant_id, principal_id, token[:32], digest, label),
                 )
         # Print only after the transaction has committed successfully.
         import json
