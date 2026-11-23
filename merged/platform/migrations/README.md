@@ -64,7 +64,8 @@ GRANT SELECT, INSERT ON omnis.tenant_evidence TO omnis_app;
 GRANT USAGE, SELECT ON SEQUENCE omnis.tenant_evidence_sequence_seq TO omnis_app;
 GRANT SELECT, INSERT ON omnis.tenant_audit_event TO omnis_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON omnis.tenant_decision_rule TO omnis_app;
-GRANT SELECT, INSERT, UPDATE ON omnis.tenant_assistant_conversation TO omnis_app;
+GRANT SELECT, INSERT ON omnis.tenant_assistant_conversation TO omnis_app;
+GRANT UPDATE (message_count, updated_at) ON omnis.tenant_assistant_conversation TO omnis_app;
 GRANT SELECT, INSERT ON omnis.tenant_assistant_message TO omnis_app;
 ```
 
