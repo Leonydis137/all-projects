@@ -381,7 +381,7 @@ def add_tenant_member(body: TenantMemberIn, principal: Principal = Depends(tenan
         raise HTTPException(403, "only an owner may assign the owner role")
     try:
         result = _tenant_admin_store().add_member(
-            principal.tenant_id, body.email, body.display_name, body.role, principal.principal_id, audit
+            principal.tenant_id, body.email, body.display_name, body.role, principal.principal_id, principal.role, audit
         )
         return {"member": result}
     except TenantAdminError as exc:
