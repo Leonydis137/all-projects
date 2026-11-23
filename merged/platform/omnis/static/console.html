@@ -153,7 +153,11 @@ function disconnectTenant(){
   tenantSession=null;selectedTenantConversation=null;
   tenantEl('token').value='';tenantEl('id').value='';tenantEl('identity').textContent='';tenantEl('credential_once').textContent='';tenantEl('credential_once').hidden=true;
   tenantEl('conversations').replaceChildren();tenantEl('messages').replaceChildren();
-  tenantStatus('Disconnected. Credentials cleared from this page session.');
+  tenantEl('members').replaceChildren();tenantEl('credentials').replaceChildren();
+  tenantEl('admin_workspace').hidden=true;tenantEl('member_editor').hidden=true;tenantEl('credential_editor').hidden=true;
+  ['usage','audit','evidence','operations','chat_status','credential_once'].forEach(id=>{tenantEl(id).textContent='';});
+  tenantEl('credential_once').hidden=true;tenantEl('rules').replaceChildren();
+  tenantStatus('Disconnected. Tenant credentials and displayed tenant data cleared from this page session.');
 }
 async function refreshTenantWorkspace(){
   if(!tenantSession)return;
