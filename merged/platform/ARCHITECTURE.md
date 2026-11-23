@@ -113,3 +113,15 @@ event in the same transaction as the rule mutation. Tenant decisions compose the
 tenant's enabled rules with the platform defaults without mutating the shared
 legacy decision engine. The legacy global rule API remains isolated behind the
 shared token.
+
+
+## Tenant-isolated assistant conversations
+
+Migration 012 stores assistant conversations and message history in PostgreSQL with
+forced RLS and transaction-local tenant/principal scope. Tenant assistant requests
+load prior context only from the authenticated tenant's conversation. Client-supplied
+history is never trusted. Conversation creation and completed exchanges are
+principal-attributed in the tenant audit chain. Assistant access is separately
+permissioned through `assistant:use`; the Anthropic provider credential and billing
+remain platform-managed rather than tenant-managed. Message history is append-only
+through the application runtime role.
