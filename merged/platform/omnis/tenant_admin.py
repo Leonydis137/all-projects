@@ -143,6 +143,15 @@ class TenantAdminStore:
                     )
                     if cur.fetchone()["owners"] <= 1:
                         raise TenantAdminError("cannot demote or suspend the last active tenant owner")
+                revoked_credentials = 0
+                if status == "suspended" and current["status"] != "suspended":
+                    cur.execute(
+                        """UPDATE omnis.api_credential SET revoked_at = now()
+                           WHERE tenant_id = %s AND principal_id = %s AND revoked_at IS NULL
+                           RETURNING credential_id""",
+                        (tenant, member),
+                    )
+                    revoked_credentials = len(cur.fetchall())
                 cur.execute(
                     """UPDATE omnis.tenant_membership SET role = %s, status = %s
                        WHERE tenant_id = %s AND principal_id = %s""",
@@ -152,7 +161,8 @@ class TenantAdminStore:
                     db, "tenant.member.updated",
                     {"tenant_id": tenant, "principal_id": member,
                      "previous_role": current["role"], "role": role,
-                     "previous_status": current["status"], "status": status},
+                     "previous_status": current["status"], "status": status,
+                     "revoked_credentials": revoked_credentials},
                     actor=actor,
                 )
         return {"tenant_id": tenant, "principal_id": member, "role": role, "status": status}
