@@ -258,6 +258,30 @@ The tenant workspace provides:
 - COVENANT-governed tenant decision and AEON protocol operations (when permitted).
 - Tenant assistant conversation creation, history retrieval, and messaging.
 
+### Tenant onboarding and administration dashboard
+
+Provision a new tenant through the trusted provisioning command in
+`migrations/README.md`; tenant creation is deliberately not exposed as a
+tenant-member API. The provisioning database URL must use a separate owner role
+and must never be configured as the runtime database URL.
+
+After provisioning:
+
+1. Store the one-time owner bearer token in an approved secret manager and retain
+   the tenant UUID alongside it. The console does not persist either value.
+2. Connect through the Tenant tab and confirm the tenant identity and owner role.
+3. Add members using their normalized email address and assign least-privilege roles.
+4. Issue a separate expiring credential to each active member; deliver it securely.
+5. Verify that at least one active owner remains and review credential expiry and
+   revocation regularly.
+
+Owners can view the consolidated administration dashboard through
+`GET /v1/tenant/admin/overview` (permission: `tenant:manage`). It reports tenant
+status, membership totals, active owners, and credential totals without returning
+credential secrets or digests. The dashboard includes an onboarding checklist.
+Membership and credential mutations remain on the existing permission-gated routes
+and are audited in the tenant-local audit chain.
+
 Assistant conversation history is retrieved from the tenant-scoped PostgreSQL
 store; the browser does not inject or persist conversation history. Credentials
 are held in page memory only and are cleared when **Disconnect** is selected or

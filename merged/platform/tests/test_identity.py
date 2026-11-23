@@ -515,3 +515,57 @@ def test_credential_revocation_uses_tenant_audit_log(monkeypatch):
         headers={"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant},
     )
     assert response.status_code == 200
+
+def test_tenant_admin_overview_is_owner_only_and_tenant_scoped(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api
+    from omnis.audit import AuditLog
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    owner = Principal(tenant, "1a2b3c4d-5e6f-4789-8abc-123456789abc",
+                      "owner@example.test", "Owner", "owner", TOKEN[:32])
+    admin = Principal(tenant, "2a2b3c4d-5e6f-4789-8abc-123456789abc",
+                      "admin@example.test", "Admin", "admin", TOKEN[:32])
+
+    class AdminStore:
+        def overview(self, tenant_id):
+            assert tenant_id == tenant
+            return {"tenant_id": tenant_id, "slug": "example-tenant",
+                    "display_name": "Example Tenant", "status": "active",
+                    "member_count": 2, "active_member_count": 2,
+                    "active_owner_count": 1, "credential_count": 2,
+                    "active_credential_count": 1}
+
+    current = {"principal": owner}
+    monkeypatch.setattr(api, "tenant_admin", AdminStore())
+    monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: current["principal"])
+    client = TestClient(api.app)
+    headers = {"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant}
+
+    response = client.get("/v1/tenant/admin/overview", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["overview"]["active_owner_count"] == 1
+    assert response.json()["overview"]["tenant_id"] == tenant
+
+    current["principal"] = admin
+    denied = client.get("/v1/tenant/admin/overview", headers=headers)
+    assert denied.status_code == 403
+
+
+def test_tenant_admin_overview_rejects_reader(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api
+    from omnis.audit import AuditLog
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    reader = Principal(tenant, "3a2b3c4d-5e6f-4789-8abc-123456789abc",
+                       "reader@example.test", "Reader", "reader", TOKEN[:32])
+    monkeypatch.setattr(api, "tenant_admin", object())
+    monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: reader)
+    response = TestClient(api.app).get(
+        "/v1/tenant/admin/overview",
+        headers={"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant},
+    )
+    assert response.status_code == 403

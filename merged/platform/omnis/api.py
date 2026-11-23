@@ -453,6 +453,18 @@ def govern_tenant(body: GovernIn, principal: Principal = Depends(tenant_identity
     return verdict
 
 
+@app.get("/v1/tenant/admin/overview")
+def tenant_admin_overview(principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("tenant:manage"):
+        raise HTTPException(403, "tenant role lacks tenant:manage")
+    try:
+        return {"overview": _tenant_admin_store().overview(principal.tenant_id)}
+    except TenantAdminError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except TenantAdminUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
 @app.get("/v1/tenant/members")
 def list_tenant_members(principal: Principal = Depends(tenant_identity)) -> dict:
     if not principal.allows("members:manage"):
