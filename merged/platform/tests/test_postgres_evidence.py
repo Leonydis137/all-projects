@@ -302,7 +302,7 @@ def test_tenant_evidence_isolation_idempotency_and_audit(postgres_dsn):
     assert len(ledger.list(tenant_b)) == 1
     assert ledger.verify(tenant_a)["valid"] is True
     assert ledger.verify(tenant_b)["valid"] is True
-    assert audit.verify() is True
+    assert audit.verify(tenant)["valid"] is True
 
 
 def test_tenant_evidence_table_enforces_rls_and_immutability(postgres_dsn):
@@ -346,13 +346,13 @@ def test_tenant_evidence_table_enforces_rls_and_immutability(postgres_dsn):
 
 def test_tenant_admin_member_lifecycle_and_credential_revocation(postgres_dsn):
     from omnis.identity import InvalidCredential, authenticate_api_key
-    from omnis.postgres_audit import PostgresAuditLog
+    from omnis.postgres_tenant_audit import PostgresTenantAuditLog
     from omnis.tenant_admin import TenantAdminError, TenantAdminStore
 
     marker = uuid4().hex
     tenant, owner = _create_tenant_owner(postgres_dsn, "admin-" + marker)
     pepper = "integration-test-pepper-that-is-at-least-32-characters"
-    audit = PostgresAuditLog(postgres_dsn)
+    audit = PostgresTenantAuditLog(postgres_dsn)
     admin = TenantAdminStore(postgres_dsn, pepper)
 
     with pytest.raises(TenantAdminError, match="last active tenant owner"):
@@ -415,7 +415,8 @@ def test_tenant_admin_member_lifecycle_and_credential_revocation(postgres_dsn):
 
     admin.update_member(tenant, owner, "admin", "active", owner, "owner", audit)
     assert {item["role"] for item in admin.list_members(tenant)} == {"owner", "admin"}
-    assert audit.verify() is True
+    assert audit.verify(tenant_a)["valid"] is True
+    assert audit.verify(tenant_b)["valid"] is True
 
 
 def test_tenant_audit_chains_are_isolated_and_append_only(postgres_dsn):
