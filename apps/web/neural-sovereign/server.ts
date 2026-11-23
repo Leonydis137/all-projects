@@ -7,6 +7,7 @@ import { Server } from "socket.io";
 import { createServer as createViteServer } from "vite";
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { GoogleGenAI } from "@google/genai";
+import { resolveSafeSystemCommand } from "./server/safe-command";
 import { topologyEngine } from "./src/lib/TopologyEngine";
 
 const QDRANT_URL = process.env.QDRANT_URL || 'http://localhost:6333';
@@ -246,15 +247,6 @@ async function startServer() {
 
   // Terminal API. Commands are exact allow-list entries and are executed
   // without a shell; never pass request text to a shell interpreter.
-  const safeOSCommands: Record<string, { executable: string; args: string[] }> = {
-    uptime: { executable: "uptime", args: [] },
-    date: { executable: "date", args: [] },
-    whoami: { executable: "whoami", args: [] },
-    "uname -a": { executable: "uname", args: ["-a"] },
-    "free -m": { executable: "free", args: ["-m"] },
-    "ps aux": { executable: "ps", args: ["aux"] },
-  };
-
   app.post("/api/cmd", (req, res) => {
     const command = typeof req.body?.command === "string"
       ? req.body.command.trim().toLowerCase()
@@ -275,7 +267,7 @@ async function startServer() {
         return res.json({ output: "Safe commands: ping, status, flush, help, uptime, date, whoami, uname -a, free -m, ps aux" });
     }
 
-    const selected = safeOSCommands[command];
+    const selected = resolveSafeSystemCommand(command);
     if (!selected) {
       return res.status(400).json({ output: "Command not recognized or unauthorized." });
     }
