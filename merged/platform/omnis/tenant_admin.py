@@ -172,7 +172,8 @@ class TenantAdminStore:
                     if cur.fetchone()["owners"] <= 1:
                         raise TenantAdminError("cannot demote or suspend the last active tenant owner")
                 revoked_credentials = 0
-                if status == "suspended" and current["status"] != "suspended":
+                if ((status == "suspended" and current["status"] != "suspended")
+                        or (status == "active" and current["status"] == "suspended")):
                     cur.execute(
                         """UPDATE omnis.api_credential SET revoked_at = now()
                            WHERE tenant_id = %s AND principal_id = %s AND revoked_at IS NULL
