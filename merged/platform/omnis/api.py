@@ -79,6 +79,7 @@ async def audit_api_requests(request: Request, call_next):
         "/v1/tenant/evidence/verify",
         "/v1/tenant/members",
         "/v1/tenant/credentials",
+        "/v1/tenant/admin/overview",
         "/v1/tenant/source/fetch",
         "/v1/tenant/source/attestation-key",
         "/v1/tenant/audit",
