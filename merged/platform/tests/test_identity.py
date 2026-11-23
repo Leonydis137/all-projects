@@ -472,8 +472,7 @@ def test_tenant_credential_inventory_is_permission_gated_and_never_returns_token
 
     current = {"principal": owner}
     monkeypatch.setattr(api, "tenant_admin", AdminStore())
-    test_audit = AuditLog()
-    monkeypatch.setattr(api, "audit", test_audit)
+    monkeypatch.setattr(api, "audit", AuditLog())
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: current["principal"])
     client = TestClient(api.app)
     headers = {"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant}
@@ -539,7 +538,8 @@ def test_tenant_admin_overview_is_owner_only_and_tenant_scoped(monkeypatch):
 
     current = {"principal": owner}
     monkeypatch.setattr(api, "tenant_admin", AdminStore())
-    monkeypatch.setattr(api, "audit", AuditLog())
+    test_audit = AuditLog()
+    monkeypatch.setattr(api, "audit", test_audit)
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: current["principal"])
     client = TestClient(api.app)
     headers = {"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant}
