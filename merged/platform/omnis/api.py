@@ -19,6 +19,9 @@ from .decision import Rule, default_engine
 from .evidence import EvidenceLedger, EvidenceValidationError
 from .postgres_evidence import EvidenceIntegrityError, PostgresEvidenceLedger
 from .postgres_tenant_evidence import PostgresTenantEvidenceLedger
+from .postgres_tenant_audit import (
+    PostgresTenantAuditLog, TenantAuditIntegrityError, TenantAuditValidationError,
+)
 from .tenant_admin import TenantAdminError, TenantAdminStore, TenantAdminUnavailable
 from .protocols import AEON, Context
 from .recommend import Recommender
@@ -40,6 +43,7 @@ audit = (PostgresAuditLog(config.DATABASE_URL, actor=os.environ.get("OMNIS_AUDIT
 evidence = (PostgresEvidenceLedger(config.DATABASE_URL, audit_log=audit) if config.DATABASE_URL else
             EvidenceLedger(os.environ.get("OMNIS_EVIDENCE_DB", str(config.PLATFORM_DIR / "var" / "evidence.sqlite3"))))
 tenant_evidence = PostgresTenantEvidenceLedger(config.DATABASE_URL) if config.DATABASE_URL else None
+tenant_audit = PostgresTenantAuditLog(config.DATABASE_URL) if config.DATABASE_URL else None
 tenant_admin = (TenantAdminStore(config.DATABASE_URL, os.environ.get('OMNIS_API_KEY_PEPPER', '')) if config.DATABASE_URL and len(os.environ.get('OMNIS_API_KEY_PEPPER', '')) >= 32 else None)
 STATIC = Path(__file__).parent / "static"
 _HEALTH_CACHE_TTL_SECONDS = 2.0
@@ -88,14 +92,17 @@ async def audit_api_requests(request: Request, call_next):
         request.state.identity_error = identity_error
 
     event = {"method": request.method, "path": path}
+    actor = principal.principal_id if principal is not None else None
+    # Authenticated tenant traffic is recorded only in that tenant's isolated chain.
+    # The legacy global chain remains the operational log for non-tenant requests.
+    request_audit = tenant_audit if principal is not None and tenant_audit is not None else audit
     if principal is not None:
         event["tenant_id"] = principal.tenant_id
-    actor = principal.principal_id if principal is not None else None
     try:
         if actor:
-            audit.record("http.request.started", event, actor=actor)
+            request_audit.record("http.request.started", event, actor=actor)
         else:
-            audit.record("http.request.started", event)
+            request_audit.record("http.request.started", event)
     except Exception:
         return JSONResponse(status_code=503, content={"detail": "audit_unavailable"})
 
@@ -103,19 +110,21 @@ async def audit_api_requests(request: Request, call_next):
         response = await call_next(request)
     except Exception as exc:
         try:
+            failure = {**event, "error_type": type(exc).__name__}
             if actor:
-                audit.record("http.request.failed", {**event, "error_type": type(exc).__name__}, actor=actor)
+                request_audit.record("http.request.failed", failure, actor=actor)
             else:
-                audit.record("http.request.failed", {**event, "error_type": type(exc).__name__})
+                request_audit.record("http.request.failed", failure)
         except Exception:
             pass
         raise
 
     try:
+        completion = {**event, "status_code": response.status_code}
         if actor:
-            audit.record("http.request.completed", {**event, "status_code": response.status_code}, actor=actor)
+            request_audit.record("http.request.completed", completion, actor=actor)
         else:
-            audit.record("http.request.completed", {**event, "status_code": response.status_code})
+            request_audit.record("http.request.completed", completion)
     except Exception:
         response.headers["X-OMNIS-Audit-Status"] = "incomplete"
     return response
@@ -141,12 +150,16 @@ def tenant_identity(request: Request) -> Principal:
     return principal
 
 
-def gated(kind: str, attrs: Optional[dict] = None, actor: Optional[str] = None) -> dict:
-    """Run an action through the COVENANT gate and audit it."""
+def gated(kind: str, attrs: Optional[dict] = None, actor: Optional[str] = None,
+          tenant_id: Optional[str] = None) -> dict:
+    """Run an action through COVENANT and append its decision to the correct audit chain."""
     action = governance.stamp({"type": kind, **(attrs or {})}, mission="PRIMARY_MISSION", auditable=True, data_provenance=True)
     verdict = governance.evaluate(action)
     payload = {"action": kind, "allowed": verdict["allowed"], "violations": verdict["violations"]}
-    if actor:
+    if tenant_id:
+        payload["tenant_id"] = tenant_id
+        (tenant_audit or audit).record("govern", payload, actor=actor)
+    elif actor:
         audit.record("govern", payload, actor=actor)
     else:
         audit.record("govern", payload)
@@ -294,7 +307,7 @@ def health():
 @app.get("/v1/identity/me")
 def get_identity(principal: Principal = Depends(tenant_identity)) -> dict:
     """Return the authenticated principal and permissions for the selected tenant."""
-    audit.record("identity.access", {"tenant_id": principal.tenant_id,
+    (tenant_audit or audit).record("identity.access", {"tenant_id": principal.tenant_id,
                                       "principal_id": principal.principal_id},
                  actor=principal.principal_id)
     return {
@@ -318,9 +331,9 @@ def append_tenant_evidence(
     if tenant_evidence is None:
         raise HTTPException(503, "PostgreSQL tenant evidence is not configured")
     try:
-        gated("tenant.evidence.append", {"tenant_id": principal.tenant_id}, actor=principal.principal_id)
+        gated("tenant.evidence.append", {"tenant_id": principal.tenant_id}, actor=principal.principal_id, tenant_id=principal.tenant_id)
         stored = tenant_evidence.append_with_audit(
-            body.model_dump(exclude_none=True), principal.tenant_id, principal.principal_id, audit
+            body.model_dump(exclude_none=True), principal.tenant_id, principal.principal_id, (tenant_audit or audit)
         )
         return {"record": stored}
     except EvidenceIntegrityError:
@@ -363,6 +376,48 @@ def _tenant_admin_store() -> TenantAdminStore:
     return tenant_admin
 
 
+
+
+@app.get("/v1/tenant/audit")
+def list_tenant_audit(limit: int = 100, before: int | None = None,
+                      principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("audit:read"):
+        raise HTTPException(403, "tenant role lacks audit:read")
+    if tenant_audit is None:
+        raise HTTPException(503, "PostgreSQL tenant audit is not configured")
+    try:
+        return {"events": tenant_audit.list(principal.tenant_id, limit=limit, before=before)}
+    except TenantAuditValidationError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except TenantAuditIntegrityError:
+        return JSONResponse(status_code=503, content={"detail": "tenant_audit_integrity_error"})
+
+
+@app.get("/v1/tenant/audit/verify")
+def verify_tenant_audit(principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("audit:read"):
+        raise HTTPException(403, "tenant role lacks audit:read")
+    if tenant_audit is None:
+        raise HTTPException(503, "PostgreSQL tenant audit is not configured")
+    return tenant_audit.verify(principal.tenant_id)
+
+
+@app.post("/v1/tenant/govern")
+def govern_tenant(body: GovernIn, principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("governance:execute"):
+        raise HTTPException(403, "tenant role lacks governance:execute")
+    action = governance.stamp(body.action, mission="PRIMARY_MISSION",
+                              auditable=True, data_provenance=True)
+    verdict = governance.evaluate(action, body.context)
+    (tenant_audit or audit).record(
+        "governance.evaluate",
+        {"tenant_id": principal.tenant_id, "action_type": str(body.action.get("type", "unspecified"))[:160],
+         "allowed": verdict["allowed"], "violations": verdict["violations"]},
+        actor=principal.principal_id,
+    )
+    return verdict
+
+
 @app.get("/v1/tenant/members")
 def list_tenant_members(principal: Principal = Depends(tenant_identity)) -> dict:
     if not principal.allows("members:manage"):
@@ -381,7 +436,7 @@ def add_tenant_member(body: TenantMemberIn, principal: Principal = Depends(tenan
         raise HTTPException(403, "only an owner may assign the owner role")
     try:
         result = _tenant_admin_store().add_member(
-            principal.tenant_id, body.email, body.display_name, body.role, principal.principal_id, principal.role, audit
+            principal.tenant_id, body.email, body.display_name, body.role, principal.principal_id, principal.role, (tenant_audit or audit)
         )
         return {"member": result}
     except TenantAdminError as exc:
@@ -399,7 +454,7 @@ def update_tenant_member(principal_id: str, body: TenantMemberUpdateIn,
         raise HTTPException(403, "only an owner may assign the owner role")
     try:
         result = _tenant_admin_store().update_member(
-            principal.tenant_id, principal_id, body.role, body.status, principal.principal_id, principal.role, audit
+            principal.tenant_id, principal_id, body.role, body.status, principal.principal_id, principal.role, (tenant_audit or audit)
         )
         return {"member": result}
     except TenantAdminError as exc:
@@ -416,7 +471,7 @@ def issue_tenant_credential(body: TenantCredentialIn,
     try:
         return _tenant_admin_store().issue_credential(
             principal.tenant_id, body.principal_id, body.label, body.expires_in_days,
-            principal.principal_id, principal.role, audit,
+            principal.principal_id, principal.role, (tenant_audit or audit),
         )
     except TenantAdminError as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -458,7 +513,8 @@ def fetch_tenant_source(body: SourceFetchIn,
         raise HTTPException(503, "PostgreSQL tenant evidence is not configured")
     try:
         gated("tenant.source.fetch", {"tenant_id": principal.tenant_id,
-                                      "source_uri": body.source_uri}, actor=principal.principal_id)
+                                      "source_uri": body.source_uri}, actor=principal.principal_id,
+              tenant_id=principal.tenant_id)
         record, acquisition = acquire_and_attest(
             body.source_uri, body.license,
             os.environ.get("OMNIS_SOURCE_FETCHER_ID", "omnis-source-fetcher"),
