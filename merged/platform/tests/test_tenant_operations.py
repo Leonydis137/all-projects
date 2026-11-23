@@ -56,7 +56,7 @@ def test_tenant_decision_is_governed_and_written_to_tenant_audit(monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"action": "alert", "rule": "high-risk-alert"}
     kinds = [entry["kind"] for entry in tenant_log.list()]
-    assert kinds == ["http.request.started", "govern", "http.request.completed"]
+    assert kinds == ["http.request.started", "govern", "tenant.decision.executed", "http.request.completed"]
     assert tenant_log.list()[1]["payload"]["action"] == "tenant.decision"
     assert tenant_log.list()[1]["actor"] == PRINCIPAL_ID
     assert evaluated["action"]["type"] == "tenant.decision"
