@@ -87,3 +87,33 @@ def test_reader_can_read_tenant_rules_but_cannot_write(monkeypatch):
     assert client.get("/v1/tenant/decision-rules", headers=_headers()).status_code == 200
     assert client.delete("/v1/tenant/decision-rules/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
                          headers=_headers()).status_code == 403
+
+
+def test_rule_validation_rejects_unsafe_fields_and_non_finite_values():
+    from omnis.tenant_decision_rules import TenantDecisionRuleStore, TenantRuleError
+    valid = _rule()
+    assert TenantDecisionRuleStore._validate(valid)["op"] == ">="
+    for invalid in (
+        {**valid, "field": "risk.level"},
+        {**valid, "op": "contains"},
+        {**valid, "value": float("nan")},
+        {**valid, "priority": True},
+    ):
+        try:
+            TenantDecisionRuleStore._validate(invalid)
+        except TenantRuleError:
+            pass
+        else:
+            raise AssertionError(f"invalid rule accepted: {invalid!r}")
+
+
+def test_tenant_roles_expose_read_and_manage_permissions_separately():
+    from omnis.identity import Principal
+    def principal(role):
+        return Principal(TENANT_ID, PRINCIPAL_ID, "p@example.test", "P", role, TOKEN[:32])
+    assert principal("owner").allows("decision_rules:manage")
+    assert principal("admin").allows("decision_rules:manage")
+    assert principal("operator").allows("decision_rules:read")
+    assert principal("reader").allows("decision_rules:read")
+    assert not principal("operator").allows("decision_rules:manage")
+    assert not principal("reader").allows("decision_rules:manage")
