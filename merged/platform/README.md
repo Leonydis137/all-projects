@@ -170,3 +170,25 @@ COVENANT authorization runs before network access; the resulting signed fetch
 observation is appended to the authenticated tenant's evidence ledger. Retrieve
 the verification key using `GET /v1/tenant/source/attestation-key`. This proves
 what the configured fetcher observed, not publisher authenticity or claim truth.
+
+## Tenant-governed platform operations
+
+Tenant credentials can execute the stateless OMNIS capabilities through dedicated
+routes. Each route requires `governance:execute`, evaluates the action through
+COVENANT, and records the authenticated principal and decision in that tenant's
+audit chain:
+
+- `POST /v1/tenant/decide` — run the shared read-only decision rules; the supplied
+  decision context is passed into COVENANT evaluation.
+- `POST /v1/tenant/recommend` — fit and query an in-request recommender without
+  persisting tenant data or shared model state.
+- `POST /v1/tenant/protocols/respond` — generate an AEON protocol response.
+- `POST /v1/tenant/stats/ab` and `POST /v1/tenant/stats/posterior` — run statistical
+  analysis with the same input validation as the legacy endpoints.
+- `POST /v1/tenant/math/gcd-lcm` — run the stateless number-theory helper.
+
+These routes do not make the legacy `/v1/*` endpoints tenant-aware. Global
+catalogue, rule mutation, evidence, assistant, and other legacy routes continue
+to require the shared `OMNIS_API_TOKEN` until their own data and state boundaries
+are tenant-safe. Tenant operations are audited separately; they are never written
+to the global audit chain.
