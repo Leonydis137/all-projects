@@ -73,7 +73,7 @@ class TenantDecisionRuleStore:
         if isinstance(value, str):
             value = json.loads(value)
         return {"rule_id": str(row["rule_id"]), "name": row["name"], "field": row["field"],
-                "op": row["operator"], "value": value, "action": row["action"],
+                "op": row["comparison"], "value": value, "action": row["action"],
                 "priority": row["priority"], "enabled": row["enabled"],
                 "created_by": str(row["created_by"]), "updated_by": str(row["updated_by"]),
                 "created_at": row["created_at"].isoformat(), "updated_at": row["updated_at"].isoformat()}
@@ -84,7 +84,7 @@ class TenantDecisionRuleStore:
             with db.cursor() as cur:
                 self._scope(cur, tenant)
                 cur.execute(
-                    """SELECT rule_id, name, field, operator, value, action, priority,
+                    """SELECT rule_id, name, field, comparison, value, action, priority,
                               enabled, created_by, updated_by, created_at, updated_at
                        FROM omnis.tenant_decision_rule
                        WHERE tenant_id = %s AND (%s OR enabled)
@@ -101,7 +101,7 @@ class TenantDecisionRuleStore:
                 self._scope(cur, tenant)
                 cur.execute(
                     """INSERT INTO omnis.tenant_decision_rule
-                       (tenant_id, name, field, operator, value, action, priority, created_by, updated_by)
+                       (tenant_id, name, field, comparison, value, action, priority, created_by, updated_by)
                        VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
                        RETURNING rule_id, name, field, operator, value, action, priority,
                                  enabled, created_by, updated_by, created_at, updated_at""",
@@ -124,7 +124,7 @@ class TenantDecisionRuleStore:
                 self._scope(cur, tenant)
                 cur.execute(
                     """UPDATE omnis.tenant_decision_rule
-                       SET name = %s, field = %s, operator = %s, value = %s::jsonb,
+                       SET name = %s, field = %s, comparison = %s, value = %s::jsonb,
                            action = %s, priority = %s, updated_by = %s, updated_at = now()
                        WHERE tenant_id = %s AND rule_id = %s
                        RETURNING rule_id, name, field, operator, value, action, priority,
