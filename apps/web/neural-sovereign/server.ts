@@ -275,7 +275,7 @@ async function startServer() {
     execFile(
       selected.executable,
       selected.args,
-      { timeout: 5000, maxBuffer: 64 * 1024, windowsHide: true },
+      { encoding: "utf8", timeout: 5000, maxBuffer: 64 * 1024, windowsHide: true },
       (error, stdout) => {
         if (error) {
           return res.status(500).json({ output: "The requested system command failed." });
