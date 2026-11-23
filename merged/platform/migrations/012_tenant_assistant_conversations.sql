@@ -39,7 +39,37 @@ CREATE INDEX IF NOT EXISTS tenant_assistant_message_history_idx
 ALTER TABLE omnis.tenant_assistant_conversation ENABLE ROW LEVEL SECURITY;
 ALTER TABLE omnis.tenant_assistant_conversation FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_assistant_conversation_scope ON omnis.tenant_assistant_conversation;
-CREATE POLICY tenant_assistant_conversation_scope ON omnis.tenant_assistant_conversation
+DROP POLICY IF EXISTS tenant_assistant_conversation_read ON omnis.tenant_assistant_conversation;
+DROP POLICY IF EXISTS tenant_assistant_conversation_insert ON omnis.tenant_assistant_conversation;
+DROP POLICY IF EXISTS tenant_assistant_conversation_update ON omnis.tenant_assistant_conversation;
+
+CREATE POLICY tenant_assistant_conversation_read ON omnis.tenant_assistant_conversation
+    FOR SELECT
+    USING (
+        tenant_id = nullif(current_setting('omnis.tenant_id', true), '')::uuid
+        AND EXISTS (
+            SELECT 1 FROM omnis.tenant_membership m
+            WHERE m.tenant_id = tenant_assistant_conversation.tenant_id
+              AND m.principal_id = nullif(current_setting('omnis.principal_id', true), '')::uuid
+              AND m.status = 'active'
+        )
+    );
+
+CREATE POLICY tenant_assistant_conversation_insert ON omnis.tenant_assistant_conversation
+    FOR INSERT
+    WITH CHECK (
+        tenant_id = nullif(current_setting('omnis.tenant_id', true), '')::uuid
+        AND created_by = nullif(current_setting('omnis.principal_id', true), '')::uuid
+        AND EXISTS (
+            SELECT 1 FROM omnis.tenant_membership m
+            WHERE m.tenant_id = tenant_assistant_conversation.tenant_id
+              AND m.principal_id = created_by
+              AND m.status = 'active'
+        )
+    );
+
+CREATE POLICY tenant_assistant_conversation_update ON omnis.tenant_assistant_conversation
+    FOR UPDATE
     USING (
         tenant_id = nullif(current_setting('omnis.tenant_id', true), '')::uuid
         AND EXISTS (
@@ -51,11 +81,10 @@ CREATE POLICY tenant_assistant_conversation_scope ON omnis.tenant_assistant_conv
     )
     WITH CHECK (
         tenant_id = nullif(current_setting('omnis.tenant_id', true), '')::uuid
-        AND created_by = nullif(current_setting('omnis.principal_id', true), '')::uuid
         AND EXISTS (
             SELECT 1 FROM omnis.tenant_membership m
             WHERE m.tenant_id = tenant_assistant_conversation.tenant_id
-              AND m.principal_id = created_by
+              AND m.principal_id = nullif(current_setting('omnis.principal_id', true), '')::uuid
               AND m.status = 'active'
         )
     );
