@@ -182,9 +182,9 @@ class TenantAdminStore:
                 expires = datetime.now(timezone.utc) + timedelta(days=expires_in_days)
                 cur.execute(
                     """INSERT INTO omnis.api_credential
-                       (principal_id, token_prefix, token_digest, label, expires_at)
-                       VALUES (%s, %s, %s, %s, %s) RETURNING credential_id, created_at""",
-                    (member, token[:32], digest, label, expires),
+                       (tenant_id, principal_id, token_prefix, token_digest, label, expires_at)
+                       VALUES (%s, %s, %s, %s, %s, %s) RETURNING credential_id, created_at""",
+                    (tenant, member, token[:32], digest, label, expires),
                 )
                 created = cur.fetchone()
                 audit_log.record_in_transaction(
@@ -206,7 +206,8 @@ class TenantAdminStore:
                     """SELECT c.credential_id, c.principal_id, c.revoked_at
                        FROM omnis.api_credential c
                        JOIN omnis.tenant_membership m ON m.principal_id = c.principal_id
-                       WHERE c.credential_id = %s AND m.tenant_id = %s""",
+                       WHERE c.credential_id = %s AND c.tenant_id = %s
+                         AND m.tenant_id = c.tenant_id""",
                     (credential, tenant),
                 )
                 row = cur.fetchone()
