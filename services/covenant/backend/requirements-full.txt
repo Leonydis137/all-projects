@@ -3,7 +3,7 @@ fastapi[all]==0.129.0
 uvicorn[standard]==0.40.0
 pydantic==2.6.1
 pydantic-settings==2.1.0
-starlette==0.49.1
+starlette==1.3.1
 
 # ASGI Servers & Performance
 uvloop==0.19.0
@@ -59,7 +59,7 @@ structlog==24.1.0
 python-json-logger==2.0.7
 
 # AI/ML Frameworks
-torch==2.13.0
+torch==2.15.0
 torchvision==0.25.0
 transformers==5.10.1
 sentence-transformers==5.6.0
@@ -98,7 +98,7 @@ web3==7.15.0
 eth-account==0.11.0
 eth-utils==4.0.0
 py-evm==0.12.1b1
-ecdsa==0.19.1
+ecdsa==0.19.2
 pycryptodome==3.20.0
 
 # Graph Processing
@@ -133,7 +133,7 @@ httpx==0.26.0
 aiohttp==3.14.5
 websockets==12.0
 httpcore==1.0.2
-requests==2.32.5
+requests==2.33.0
 
 # Data Validation & Serialization
 marshmallow==4.2.2
@@ -141,13 +141,13 @@ cerberus==1.3.5
 jsonschema==4.21.1
 orjson==3.11.6
 msgpack==1.2.3
-pyarrow==15.0.0
+pyarrow==23.0.1
 
 # Data Processing
 polars==0.20.7
 pandas==2.2.0
 dask==2024.2.0
-ray==2.56.0
+ray==2.60.0
 
 # Image & Media
 pillow==13.0.0
@@ -171,7 +171,7 @@ minio==7.2.20
 launchdarkly-server-sdk==9.2.1
 python-decouple==3.8
 environs==11.0.0
-dynaconf==3.2.4
+dynaconf==3.2.13
 
 # Rate Limiting
 slowapi==0.1.9
@@ -250,5 +250,5 @@ newrelic==9.5.0
 
 # Additional Security
 oauthlib==4.0.1
-pynacl==1.5.0
+pynacl==1.6.2
 secrets==1.0.2
