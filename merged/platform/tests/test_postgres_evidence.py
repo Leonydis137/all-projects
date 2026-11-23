@@ -136,8 +136,7 @@ def test_evidence_and_audit_commit_atomically(postgres_dsn):
             (str(appended["sequence"]), appended["record_hash"]),
         ).fetchone()[0]
     assert paired_events == 1
-    assert audit.verify(tenant_a)["valid"] is True
-    assert audit.verify(tenant_b)["valid"] is True
+    assert audit.verify() is True
 
 
 def test_postgres_evidence_idempotency(postgres_dsn):
@@ -302,7 +301,8 @@ def test_tenant_evidence_isolation_idempotency_and_audit(postgres_dsn):
     assert len(ledger.list(tenant_b)) == 1
     assert ledger.verify(tenant_a)["valid"] is True
     assert ledger.verify(tenant_b)["valid"] is True
-    assert audit.verify(tenant)["valid"] is True
+    assert audit.verify(tenant_a)["valid"] is True
+    assert audit.verify(tenant_b)["valid"] is True
 
 
 def test_tenant_evidence_table_enforces_rls_and_immutability(postgres_dsn):
