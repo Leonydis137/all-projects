@@ -250,8 +250,10 @@ The tenant workspace provides:
 
 - Tenant identity and role/permission visibility.
 - Current-month request usage and configured monthly quota.
+- Tenant evidence listing and ledger verification (when permitted).
 - Tenant audit event listing and hash-chain verification (when permitted).
 - Tenant decision-rule listing, creation, and deletion (when permitted).
+- COVENANT-governed tenant decision and AEON protocol operations (when permitted).
 - Tenant assistant conversation creation, history retrieval, and messaging.
 
 Assistant conversation history is retrieved from the tenant-scoped PostgreSQL
