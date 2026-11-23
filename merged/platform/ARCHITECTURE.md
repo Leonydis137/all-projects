@@ -50,11 +50,17 @@ tenant header and reports the assigned role permissions. The dedicated tenant
 evidence routes use a separate forced-RLS table, per-tenant idempotency, and
 principal-attributed audit events.
 
-Tenant credentials are intentionally not accepted by the other existing business
-endpoints yet. Those endpoints still use the legacy shared token because their
-stores have not completed tenant-level row isolation. Enabling tenant credentials
-across those routes before scoping every read, write, idempotency key, and audit
-query would create a cross-tenant data exposure risk.
+Tenant credentials are accepted only by explicitly allowlisted identity and
+`/v1/tenant/*` routes. In addition to tenant evidence, audit, administration,
+source acquisition, and governance, stateless decision, recommendation, AEON,
+statistics, and math operations are exposed through tenant-specific routes. These
+operations require `governance:execute`, pass through COVENANT, and write their
+decision and request lifecycle events to the selected tenant's audit chain.
+
+The legacy global business routes still use the shared token because their stores
+and mutable state have not completed tenant-level isolation. Enabling tenant
+credentials across those routes before scoping every read, write, idempotency key,
+and audit query would create a cross-tenant data exposure risk.
 
 
 Tenant evidence uses a separate PostgreSQL table and adapter. It has forced row-level
@@ -75,8 +81,9 @@ active owner cannot be demoted or suspended.
 
 The tenant source connector applies COVENANT authorization before outbound network
 access and appends the signed fetch observation to the selected tenant's separate
-evidence ledger. The global evidence and governance routes remain behind the legacy
-shared token until their storage and query paths are tenant-aware.
+evidence ledger. Stateless tenant platform operations use the same COVENANT and
+tenant-audit boundary. The global evidence and governance routes remain behind the
+legacy shared token until their storage and query paths are tenant-aware.
 
 API credentials are tenant-bound: the credential row carries one tenant UUID, the
 authentication query matches that tenant explicitly, and the RLS policy enforces
