@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS omnis.tenant_decision_rule (
     rule_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES omnis.tenant(tenant_id) ON DELETE RESTRICT,
     name TEXT NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 120),
-    field TEXT NOT NULL CHECK (field ~ '^[A-Za-z_][A-Za-z0-9_.]{0,127}$'),
+    field TEXT NOT NULL CHECK (field ~ '^[A-Za-z_][A-Za-z0-9_]{0,127}$'),
     comparison TEXT NOT NULL CHECK (comparison IN ('>', '>=', '<', '<=', '==', '!=')),
     value JSONB NOT NULL,
     action TEXT NOT NULL CHECK (length(btrim(action)) BETWEEN 1 AND 160),
