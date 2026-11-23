@@ -352,8 +352,9 @@ def test_owner_can_assign_second_owner(monkeypatch):
     owner = Principal(tenant, "1a2b3c4d-5e6f-4789-8abc-123456789abc",
                       "owner@example.test", "Owner", "owner", TOKEN[:32])
     class AdminStore:
-        def add_member(self, tenant_id, email, display_name, role, actor_id, audit):
+        def add_member(self, tenant_id, email, display_name, role, actor_id, actor_role, audit):
             assert role == "owner"
+            assert actor_role == "owner"
             return {"tenant_id": tenant_id, "email": email, "role": role}
     monkeypatch.setattr(api, "tenant_admin", AdminStore())
     monkeypatch.setattr(api, "audit", AuditLog())
