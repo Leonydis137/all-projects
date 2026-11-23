@@ -117,10 +117,22 @@ on membership, principal and credential tables as shown above; RLS and explicit
 tenant predicates constrain tenant and credential visibility.
 
 
-Migration 009 binds credentials to the tenant in which they were issued. Existing
-credentials are automatically backfilled only when their principal has exactly one
-membership. If a principal has multiple memberships, the migration deliberately
-fails and requires the operator to decide which tenant owns each old credential;
-do not assign one legacy credential to multiple tenants. After migration 009, every
-credential is tenant-bound and cannot authenticate against another tenant even if
-the principal is a member of both.
+Migration 009 binds credentials to the tenant in which they were issued.
+Existing credentials are automatically backfilled only when their principal has
+exactly one membership. Before applying it, inspect ambiguous credentials:
+
+```sql
+SELECT c.credential_id, c.principal_id, count(m.tenant_id) AS memberships
+FROM omnis.api_credential c
+LEFT JOIN omnis.tenant_membership m ON m.principal_id = c.principal_id
+GROUP BY c.credential_id, c.principal_id
+HAVING count(m.tenant_id) <> 1;
+```
+
+A principal-level token from the previous schema could authenticate against every
+tenant where that principal had a membership. Therefore credentials with zero or
+multiple memberships cannot be safely assigned automatically. Revoke/delete those
+legacy credential rows after reviewing the report, then apply migration 009 and
+issue new tenant-bound credentials. Do not reuse one legacy token across tenants.
+After migration 009, every remaining credential is bound to one tenant and cannot
+authenticate against another tenant even if the principal belongs to both.
