@@ -143,7 +143,7 @@ async function connectTenant(){
   tenantSession={token,tenant,permissions:[]};selectedTenantConversation=null;
   try{
     const me=await tenantRequest('/v1/identity/me');
-    tenantSession.permissions=me.permissions||[];tenantSession.role=me.role;
+    tenantSession.permissions=me.permissions||[];tenantSession.role=me.role;tenantEl('member_role').querySelector('option[value="owner"]').hidden=me.role!=='owner';
     tenantEl('identity').textContent=me.display_name+' · '+me.email+' · '+me.role+' · '+me.tenant_id;
     tenantStatus('Authenticated · '+me.permissions.join(', '));
     await refreshTenantWorkspace();
@@ -151,7 +151,7 @@ async function connectTenant(){
 }
 function disconnectTenant(){
   tenantSession=null;selectedTenantConversation=null;
-  tenantEl('token').value='';tenantEl('id').value='';tenantEl('identity').textContent='';
+  tenantEl('token').value='';tenantEl('id').value='';tenantEl('identity').textContent='';tenantEl('credential_once').textContent='';tenantEl('credential_once').hidden=true;
   tenantEl('conversations').replaceChildren();tenantEl('messages').replaceChildren();
   tenantStatus('Disconnected. Credentials cleared from this page session.');
 }
@@ -181,6 +181,7 @@ async function loadTenantMembers(){
       const status=document.createElement('select');['active','suspended'].forEach(value=>{const opt=document.createElement('option');opt.value=value;opt.textContent=value;status.append(opt)});status.value=member.membership_status;
       const save=tenantNode('button','','Save');save.type='button';
       save.addEventListener('click',async()=>{try{await tenantRequest('/v1/tenant/members/'+encodeURIComponent(member.principal_id),'PATCH',{role:role.value,status:status.value});tenantStatus('Membership updated.');await loadTenantMembers();await loadTenantCredentials()}catch(e){tenantStatus(e.message,true)}});
+      if(member.role==='owner'&&tenantSession.role!=='owner'){role.disabled=true;status.disabled=true;save.disabled=true;}
       row.append(role,status,save);host.append(row);
     }
     if(!tenantMembersCache.length)host.append(tenantNode('span','','No members found.'));
