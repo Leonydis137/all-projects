@@ -64,6 +64,32 @@ def test_tenant_decision_is_governed_and_written_to_tenant_audit(monkeypatch):
     assert global_log.list() == []
 
 
+def test_tenant_routes_do_not_use_shared_mutable_engines(monkeypatch):
+    client, _, _, _ = _client(monkeypatch)
+    monkeypatch.setattr(api.engine, "decide", lambda context: {
+        "action": "cross-tenant-poison", "rule": "legacy-mutation",
+    })
+    monkeypatch.setattr(api.aeon, "respond", lambda context: {
+        "protocol": "cross-tenant-poison", "response": "legacy-mutation",
+    })
+
+    decision = client.post(
+        "/v1/tenant/decide",
+        headers=_headers(),
+        json={"context": {"risk_level": 9}},
+    )
+    protocol = client.post(
+        "/v1/tenant/protocols/respond",
+        headers=_headers(),
+        json={"emotional_tone": "frustrated"},
+    )
+
+    assert decision.status_code == 200
+    assert decision.json()["action"] == "alert"
+    assert protocol.status_code == 200
+    assert protocol.json()["protocol"] == "collaborate"
+
+
 def test_tenant_operation_cannot_be_used_by_reader_role(monkeypatch):
     client, tenant_log, global_log, _ = _client(monkeypatch, role="reader")
     response = client.post(
