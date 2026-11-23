@@ -23,6 +23,7 @@ from .postgres_tenant_audit import (
     PostgresTenantAuditLog, TenantAuditIntegrityError, TenantAuditValidationError,
 )
 from .tenant_admin import TenantAdminError, TenantAdminStore, TenantAdminUnavailable
+from .tenant_decision_rules import TenantDecisionRuleStore, TenantRuleError, TenantRuleUnavailable
 from .protocols import AEON, Context
 from .recommend import Recommender
 from .identity import IdentityUnavailable, InvalidCredential, Principal, authenticate_api_key
@@ -45,6 +46,7 @@ evidence = (PostgresEvidenceLedger(config.DATABASE_URL, audit_log=audit) if conf
 tenant_evidence = PostgresTenantEvidenceLedger(config.DATABASE_URL) if config.DATABASE_URL else None
 tenant_audit = PostgresTenantAuditLog(config.DATABASE_URL) if config.DATABASE_URL else None
 tenant_admin = (TenantAdminStore(config.DATABASE_URL, os.environ.get('OMNIS_API_KEY_PEPPER', '')) if config.DATABASE_URL and len(os.environ.get('OMNIS_API_KEY_PEPPER', '')) >= 32 else None)
+tenant_decision_rules = TenantDecisionRuleStore(config.DATABASE_URL) if config.DATABASE_URL else None
 STATIC = Path(__file__).parent / "static"
 _HEALTH_CACHE_TTL_SECONDS = 2.0
 _health_lock = threading.Lock()
@@ -84,8 +86,9 @@ async def audit_api_requests(request: Request, call_next):
         "/v1/tenant/stats/ab",
         "/v1/tenant/stats/posterior",
         "/v1/tenant/math/gcd-lcm",
+        "/v1/tenant/decision-rules",
     }
-    if path.startswith("/v1/tenant/members/") or path.startswith("/v1/tenant/credentials/"):
+    if path.startswith("/v1/tenant/decision-rules/") or path.startswith("/v1/tenant/members/") or path.startswith("/v1/tenant/credentials/"):
         tenant_auth_paths.add(path)
     if path in tenant_auth_paths:
         authorization = request.headers.get("authorization", "")
@@ -269,6 +272,15 @@ class TenantMemberIn(BaseModel):
 class TenantMemberUpdateIn(BaseModel):
     role: str
     status: str = "active"
+
+
+class TenantDecisionRuleIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    field: str = Field(min_length=1, max_length=128)
+    op: str
+    value: Any
+    action: str = Field(min_length=1, max_length=160)
+    priority: int = Field(default=0, ge=-100000, le=100000)
 
 
 class TenantCredentialIn(BaseModel):
@@ -544,6 +556,69 @@ def fetch_tenant_source(body: SourceFetchIn,
         raise HTTPException(422, str(exc)) from exc
 
 
+def _tenant_rule_store() -> TenantDecisionRuleStore:
+    if tenant_decision_rules is None:
+        raise HTTPException(503, "PostgreSQL tenant decision rules are not configured")
+    return tenant_decision_rules
+
+
+@app.get("/v1/tenant/decision-rules")
+def list_tenant_decision_rules(principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("decision_rules:read"):
+        raise HTTPException(403, "tenant role lacks decision_rules:read")
+    try:
+        return {"rules": _tenant_rule_store().list_rules(principal.tenant_id, include_disabled=True)}
+    except TenantRuleUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.post("/v1/tenant/decision-rules")
+def create_tenant_decision_rule(body: TenantDecisionRuleIn,
+                                principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("decision_rules:manage"):
+        raise HTTPException(403, "tenant role lacks decision_rules:manage")
+    try:
+        _tenant_operation(principal, "tenant.decision_rule.create", {"rule_name": body.name})
+        result = _tenant_rule_store().create_rule(
+            principal.tenant_id, principal.principal_id, body.model_dump(), tenant_audit or audit)
+        return {"rule": result}
+    except TenantRuleError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except TenantRuleUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.put("/v1/tenant/decision-rules/{rule_id}")
+def update_tenant_decision_rule(rule_id: str, body: TenantDecisionRuleIn,
+                                principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("decision_rules:manage"):
+        raise HTTPException(403, "tenant role lacks decision_rules:manage")
+    try:
+        _tenant_operation(principal, "tenant.decision_rule.update", {"rule_id": rule_id, "rule_name": body.name})
+        result = _tenant_rule_store().update_rule(
+            principal.tenant_id, principal.principal_id, rule_id, body.model_dump(), tenant_audit or audit)
+        return {"rule": result}
+    except TenantRuleError as exc:
+        raise HTTPException(404 if "not found" in str(exc) else 422, str(exc)) from exc
+    except TenantRuleUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.delete("/v1/tenant/decision-rules/{rule_id}")
+def delete_tenant_decision_rule(rule_id: str,
+                                principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("decision_rules:manage"):
+        raise HTTPException(403, "tenant role lacks decision_rules:manage")
+    try:
+        _tenant_operation(principal, "tenant.decision_rule.delete", {"rule_id": rule_id})
+        return _tenant_rule_store().delete_rule(
+            principal.tenant_id, principal.principal_id, rule_id, tenant_audit or audit)
+    except TenantRuleError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except TenantRuleUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
 def _tenant_operation(
     principal: Principal,
     kind: str,
@@ -565,8 +640,20 @@ def _tenant_operation(
 @app.post("/v1/tenant/decide")
 def tenant_decide(body: DecideIn, principal: Principal = Depends(tenant_identity)) -> dict:
     _tenant_operation(principal, "tenant.decision", body.attributes, body.context)
-    return default_engine().decide(body.context)
-
+    decision_engine = default_engine()
+    if tenant_decision_rules is not None:
+        for stored in tenant_decision_rules.list_rules(principal.tenant_id):
+            decision_engine.add_rule(
+                Rule(stored["name"], stored["field"], stored["op"], stored["value"],
+                     stored["action"], stored["priority"])
+            )
+    result = decision_engine.decide(body.context)
+    (tenant_audit or audit).record(
+        "tenant.decision.executed",
+        {"tenant_id": principal.tenant_id, "action": result["action"], "rule": result["rule"]},
+        actor=principal.principal_id,
+    )
+    return result
 
 @app.post("/v1/tenant/recommend")
 def tenant_recommend(body: RecommendIn, principal: Principal = Depends(tenant_identity)) -> dict:

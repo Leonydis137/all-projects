@@ -101,3 +101,15 @@ mutations, and COVENANT decisions are written to the selected tenant's chain.
 The tenant audit API exposes only tenant-local listing and full-chain verification.
 The global audit ledger remains reserved for legacy/global operations and does not
 receive authenticated tenant request events or tenant governance payloads.
+
+
+## Tenant-specific decision policy
+
+Migration 011 stores tenant-owned decision rules in PostgreSQL with forced RLS,
+tenant-scoped uniqueness, constrained operators and fields, and creator/updater
+attribution. Owner/admin roles manage rules; other tenant roles may read them.
+Rule create/update/delete operations are COVENANT-gated and append their audit
+event in the same transaction as the rule mutation. Tenant decisions compose the
+tenant's enabled rules with the platform defaults without mutating the shared
+legacy decision engine. The legacy global rule API remains isolated behind the
+shared token.

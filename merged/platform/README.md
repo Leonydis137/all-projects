@@ -31,7 +31,7 @@ uvicorn omnis.api:app --host 127.0.0.1 --port 8080
 
 Set `OMNIS_API_TOKEN` to protect API routes. Without `OMNIS_DATABASE_URL`, OMNIS uses
 the persistent SQLite database selected by `OMNIS_EVIDENCE_DB`. To use PostgreSQL,
-apply migrations 001 through 010 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
+apply migrations 001 through 011 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
 DSN for a dedicated runtime role with schema USAGE and SELECT/INSERT privileges only.
 Remote connections require certificate and hostname verification (`sslmode=verify-full`);
 configure the provider CA as the libpq root certificate. The runtime never runs schema
@@ -193,3 +193,17 @@ catalogue, rule mutation, evidence, assistant, and other legacy routes continue
 to require the shared `OMNIS_API_TOKEN` until their own data and state boundaries
 are tenant-safe. Tenant operations are audited separately; they are never written
 to the global audit chain.
+
+
+## Tenant-specific decision rules
+
+Apply migration `011_tenant_decision_rules.sql` and grant the runtime role the
+explicit privileges documented in `migrations/README.md`. Tenant credentials can
+then use `GET/POST /v1/tenant/decision-rules`, `PUT /v1/tenant/decision-rules/{rule_id}`,
+and `DELETE /v1/tenant/decision-rules/{rule_id}`. Owners and admins can manage
+rules; operator, analyst, and reader roles can inspect them. Rule mutations pass
+COVENANT and are committed with their principal-attributed audit event in the same
+database transaction. The tenant decision endpoint evaluates that tenant's enabled
+rules in priority order alongside the platform defaults. PostgreSQL forced RLS and
+the explicit tenant predicate prevent cross-tenant rule access. The legacy global
+`/v1/decision/rules` API remains behind the shared token and is not tenant-aware.

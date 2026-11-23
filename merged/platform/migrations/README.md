@@ -12,6 +12,7 @@ Apply migrations in numeric order using a database-owner or migration role befor
 8. `008_identity_row_security.sql` enforces transaction-local tenant row security on tenant, membership, and API credential tables.
 9. `009_tenant_bound_credentials.sql` binds every API credential to one tenant, safely backfills unambiguous legacy credentials, and updates the RLS policy.
 10. `010_tenant_audit.sql` creates an independent append-only audit chain per tenant with forced RLS.
+11. `011_tenant_decision_rules.sql` adds tenant-owned decision rules with forced RLS and principal attribution.
 
 Example:
 
@@ -26,6 +27,7 @@ psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 007_tenant_evidence.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 008_identity_row_security.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 009_tenant_bound_credentials.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 010_tenant_audit.sql
+psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 011_tenant_decision_rules.sql
 ```
 
 Migration 004 intentionally contains `CREATE INDEX CONCURRENTLY` and must not be wrapped in an explicit transaction. If an interrupted concurrent index build leaves an invalid index, inspect `pg_index.indisvalid`, drop that invalid index with `DROP INDEX CONCURRENTLY omnis.evidence_idempotency_key_uq`, and rerun migration 004.
@@ -59,6 +61,7 @@ GRANT SELECT, INSERT, UPDATE ON omnis.principal TO omnis_app;
 GRANT SELECT, INSERT ON omnis.tenant_evidence TO omnis_app;
 GRANT USAGE, SELECT ON SEQUENCE omnis.tenant_evidence_sequence_seq TO omnis_app;
 GRANT SELECT, INSERT ON omnis.tenant_audit_event TO omnis_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON omnis.tenant_decision_rule TO omnis_app;
 ```
 
 Do not grant DELETE, TRUNCATE, ownership, schema CREATE, or BYPASSRLS. Migration
