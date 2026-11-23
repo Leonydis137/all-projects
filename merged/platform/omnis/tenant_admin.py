@@ -72,7 +72,7 @@ class TenantAdminStore:
                 return list(cur.fetchall())
 
     def add_member(self, tenant_id: str, email: str, display_name: str, role: str,
-                   actor_id: str, audit_log) -> dict[str, Any]:
+                   actor_id: str, actor_role: str, audit_log) -> dict[str, Any]:
         tenant, actor = self._uuid(tenant_id), self._uuid(actor_id)
         email = email.strip().lower() if isinstance(email, str) else ""
         display_name = display_name.strip() if isinstance(display_name, str) else ""
@@ -104,6 +104,16 @@ class TenantAdminStore:
                         raise TenantAdminError("principal is unavailable")
                     principal_id = str(principal["principal_id"])
                     display_name = principal["display_name"]
+                cur.execute(
+                    """SELECT role, status FROM omnis.tenant_membership
+                       WHERE tenant_id = %s AND principal_id = %s FOR UPDATE""",
+                    (tenant, principal_id),
+                )
+                existing_membership = cur.fetchone()
+                if existing_membership and existing_membership["status"] == "active":
+                    raise TenantAdminError("principal is already an active member of this tenant")
+                if existing_membership and existing_membership["role"] == "owner" and actor_role != "owner":
+                    raise TenantAdminError("only an owner may reactivate or change an owner's membership")
                 cur.execute(
                     """UPDATE omnis.api_credential SET revoked_at = now()
                        WHERE tenant_id = %s AND principal_id = %s AND revoked_at IS NULL
