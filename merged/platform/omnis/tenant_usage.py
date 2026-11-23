@@ -1,8 +1,6 @@
 """Durable tenant request metering, rate limiting, and monthly quota enforcement."""
 from __future__ import annotations
 
-import os
-from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import UUID
 
