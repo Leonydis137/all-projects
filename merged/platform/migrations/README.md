@@ -119,6 +119,7 @@ application's `OMNIS_DATABASE_URL`.
 
 Tenant credentials may also use the following tenant-aware endpoints:
 
+- `GET /v1/tenant/admin/overview` — owner-only consolidated tenant, membership, and credential counts (tenant:manage; no credential secrets returned).
 - `GET /v1/tenant/members` — list memberships in the selected tenant (members:manage).
 - `POST /v1/tenant/members` — add or reactivate a member by email (members:manage).
 - `PATCH /v1/tenant/members/{principal_id}` — change role or suspend/reactivate membership (members:manage).
