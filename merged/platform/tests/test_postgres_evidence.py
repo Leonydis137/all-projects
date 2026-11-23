@@ -360,7 +360,7 @@ def test_tenant_admin_member_lifecycle_and_credential_revocation(postgres_dsn):
         tenant, "member-" + marker + "@example.test", "Tenant Member", "reader", owner, audit
     )
     issued = admin.issue_credential(
-        tenant, member["principal_id"], "integration-test", 30, owner, audit
+        tenant, member["principal_id"], "integration-test", 30, owner, "owner", audit
     )
     authenticated = authenticate_api_key(
         issued["api_token_once"], tenant, dsn=postgres_dsn, pepper=pepper
