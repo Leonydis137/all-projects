@@ -207,3 +207,16 @@ database transaction. The tenant decision endpoint evaluates that tenant's enabl
 rules in priority order alongside the platform defaults. PostgreSQL forced RLS and
 the explicit tenant predicate prevent cross-tenant rule access. The legacy global
 `/v1/decision/rules` API remains behind the shared token and is not tenant-aware.
+
+
+## Tenant-isolated assistant conversations
+
+Migration `012_tenant_assistant_conversations.sql` creates tenant-scoped conversation
+metadata and append-only message history with forced RLS. Apply it before enabling
+the tenant assistant endpoints. Tenant credentials can list and create conversations
+and send messages through `POST /v1/tenant/assistant/conversations/{conversation_id}/messages`.
+The server loads history from the selected tenant's database rows; client-supplied
+history is not accepted. Every conversation and exchange is attributed to the
+authenticated principal and tenant audit chain. The provider call uses the configured
+OMNIS Anthropic account key; tenant data is isolated in storage and request context,
+but provider billing and credentials remain platform-managed. Message content is sent to the configured Anthropic API for generation; apply the provider's data-processing and retention terms to tenant deployments.
