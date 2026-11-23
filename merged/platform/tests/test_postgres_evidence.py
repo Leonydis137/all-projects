@@ -29,6 +29,8 @@ def postgres_dsn():
         db.execute((migration_dir / "005_case_insensitive_source_uri.sql").read_text(encoding="utf-8"))
         db.execute((migration_dir / "006_tenant_identity.sql").read_text(encoding="utf-8"))
         db.execute((migration_dir / "007_tenant_evidence.sql").read_text(encoding="utf-8"))
+        db.execute((migration_dir / "008_identity_row_security.sql").read_text(encoding="utf-8"))
+        db.execute((migration_dir / "009_tenant_bound_credentials.sql").read_text(encoding="utf-8"))
     return DSN
 
 
@@ -249,10 +251,12 @@ def _create_tenant_owner(dsn: str, marker: str) -> tuple[str, str]:
     import psycopg
 
     with psycopg.connect(dsn) as db:
-        tenant = db.execute(
-            "INSERT INTO omnis.tenant (slug, display_name) VALUES (%s, %s) RETURNING tenant_id",
-            ("t-" + marker[:40], "Tenant " + marker[:20]),
-        ).fetchone()[0]
+        tenant = uuid4()
+        db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (str(tenant),))
+        db.execute(
+            "INSERT INTO omnis.tenant (tenant_id, slug, display_name) VALUES (%s, %s, %s)",
+            (tenant, "t-" + marker[:40], "Tenant " + marker[:20]),
+        )
         principal = db.execute(
             "INSERT INTO omnis.principal (email, display_name) VALUES (%s, %s) RETURNING principal_id",
             (marker + "@example.test", "Owner " + marker[:20]),
@@ -312,6 +316,15 @@ def test_tenant_evidence_table_enforces_rls_and_immutability(postgres_dsn):
             "SELECT count(*) FROM pg_policies WHERE schemaname = 'omnis' AND tablename = 'tenant_evidence'"
         ).fetchone()[0]
         assert policies == 1
+        identity_flags = db.execute(
+            """SELECT relname, relrowsecurity, relforcerowsecurity
+               FROM pg_class
+               WHERE oid IN ('omnis.tenant'::regclass,
+                             'omnis.tenant_membership'::regclass,
+                             'omnis.api_credential'::regclass)"""
+        ).fetchall()
+        assert len(identity_flags) == 3
+        assert all(row[1] and row[2] for row in identity_flags)
 
     from omnis.postgres_audit import PostgresAuditLog
     from omnis.postgres_tenant_evidence import PostgresTenantEvidenceLedger
@@ -327,3 +340,77 @@ def test_tenant_evidence_table_enforces_rls_and_immutability(postgres_dsn):
                 "UPDATE omnis.tenant_evidence SET submitted_by = 'tampered' WHERE tenant_id = %s AND sequence = %s",
                 (tenant, row["sequence"]),
             )
+
+
+def test_tenant_admin_member_lifecycle_and_credential_revocation(postgres_dsn):
+    from omnis.identity import InvalidCredential, authenticate_api_key
+    from omnis.postgres_audit import PostgresAuditLog
+    from omnis.tenant_admin import TenantAdminError, TenantAdminStore
+
+    marker = uuid4().hex
+    tenant, owner = _create_tenant_owner(postgres_dsn, "admin-" + marker)
+    pepper = "integration-test-pepper-that-is-at-least-32-characters"
+    audit = PostgresAuditLog(postgres_dsn)
+    admin = TenantAdminStore(postgres_dsn, pepper)
+
+    with pytest.raises(TenantAdminError, match="last active tenant owner"):
+        admin.update_member(tenant, owner, "admin", "active", owner, "owner", audit)
+
+    member = admin.add_member(
+        tenant, "member-" + marker + "@example.test", "Tenant Member", "reader", owner, "owner", audit
+    )
+    issued = admin.issue_credential(
+        tenant, member["principal_id"], "integration-test", 30, owner, "owner", audit
+    )
+    authenticated = authenticate_api_key(
+        issued["api_token_once"], tenant, dsn=postgres_dsn, pepper=pepper
+    )
+    assert authenticated.principal_id == member["principal_id"]
+    assert authenticated.role == "reader"
+
+    tenant_b, owner_b = _create_tenant_owner(postgres_dsn, "other-" + marker)
+    admin.add_member(
+        tenant_b, "member-" + marker + "@example.test", "Tenant Member", "reader", owner_b, "owner", audit
+    )
+    with pytest.raises(InvalidCredential):
+        authenticate_api_key(
+            issued["api_token_once"], tenant_b, dsn=postgres_dsn, pepper=pepper
+        )
+
+    admin.update_member(tenant, member["principal_id"], "reader", "suspended", owner, "owner", audit)
+    with pytest.raises(InvalidCredential):
+        authenticate_api_key(
+            issued["api_token_once"], tenant, dsn=postgres_dsn, pepper=pepper
+        )
+    admin.update_member(tenant, member["principal_id"], "reader", "active", owner, "owner", audit)
+    with pytest.raises(InvalidCredential):
+        authenticate_api_key(
+            issued["api_token_once"], tenant, dsn=postgres_dsn, pepper=pepper
+        )
+
+    admin.update_member(tenant, member["principal_id"], "owner", "active", owner, "owner", audit)
+    admin.update_member(tenant, member["principal_id"], "owner", "suspended", owner, "owner", audit)
+    with pytest.raises(TenantAdminError, match="only an owner may reactivate"):
+        admin.add_member(
+            tenant, "member-" + marker + "@example.test", "Tenant Member",
+            "reader", owner, "admin", audit,
+        )
+    admin.add_member(
+        tenant, "member-" + marker + "@example.test", "Tenant Member",
+        "owner", owner, "owner", audit,
+    )
+
+    admin_member = admin.add_member(
+        tenant, "admin-" + marker + "@example.test", "Tenant Admin", "admin", owner, "owner", audit
+    )
+    owner_credential = admin.issue_credential(
+        tenant, owner, "owner-credential", 30, owner, "owner", audit
+    )
+    with pytest.raises(TenantAdminError, match="only an owner may revoke"):
+        admin.revoke_credential(
+            tenant, owner_credential["credential_id"], admin_member["principal_id"], "admin", audit
+        )
+
+    admin.update_member(tenant, owner, "admin", "active", owner, "owner", audit)
+    assert {item["role"] for item in admin.list_members(tenant)} == {"owner", "admin"}
+    assert audit.verify() is True
