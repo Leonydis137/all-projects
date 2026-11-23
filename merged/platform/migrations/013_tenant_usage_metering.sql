@@ -33,7 +33,15 @@ ALTER TABLE omnis.tenant_usage_policy ENABLE ROW LEVEL SECURITY;
 ALTER TABLE omnis.tenant_usage_policy FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_usage_policy_scope ON omnis.tenant_usage_policy;
 CREATE POLICY tenant_usage_policy_scope ON omnis.tenant_usage_policy
-    USING (tenant_id = nullif(current_setting('omnis.tenant_id', true), '')::uuid)
+    USING (
+        tenant_id = nullif(current_setting('omnis.tenant_id', true), '')::uuid
+        AND EXISTS (
+            SELECT 1 FROM omnis.tenant_membership m
+            WHERE m.tenant_id = tenant_usage_policy.tenant_id
+              AND m.principal_id = nullif(current_setting('omnis.principal_id', true), '')::uuid
+              AND m.status = 'active'
+        )
+    )
     WITH CHECK (
         tenant_id = nullif(current_setting('omnis.tenant_id', true), '')::uuid
         AND EXISTS (
@@ -48,7 +56,15 @@ ALTER TABLE omnis.tenant_usage_minute ENABLE ROW LEVEL SECURITY;
 ALTER TABLE omnis.tenant_usage_minute FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_usage_minute_scope ON omnis.tenant_usage_minute;
 CREATE POLICY tenant_usage_minute_scope ON omnis.tenant_usage_minute
-    USING (tenant_id = nullif(current_setting('omnis.tenant_id', true), '')::uuid)
+    USING (
+        tenant_id = nullif(current_setting('omnis.tenant_id', true), '')::uuid
+        AND EXISTS (
+            SELECT 1 FROM omnis.tenant_membership m
+            WHERE m.tenant_id = tenant_usage_minute.tenant_id
+              AND m.principal_id = nullif(current_setting('omnis.principal_id', true), '')::uuid
+              AND m.status = 'active'
+        )
+    )
     WITH CHECK (
         tenant_id = nullif(current_setting('omnis.tenant_id', true), '')::uuid
         AND EXISTS (
