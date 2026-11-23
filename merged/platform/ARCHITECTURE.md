@@ -82,3 +82,15 @@ API credentials are tenant-bound: the credential row carries one tenant UUID, th
 authentication query matches that tenant explicitly, and the RLS policy enforces
 the same boundary. Suspending a membership revokes its active credentials in the
 same transaction, so reactivation never silently restores old bearer tokens.
+
+
+## Tenant-local audit and governance
+
+Migration 010 creates an append-only audit table with forced row-level security.
+Each tenant has an independent event index, predecessor hash, and verification scope;
+there is no global sequence exposed through tenant audit queries. Authenticated
+tenant request lifecycle events, membership and credential changes, evidence
+mutations, and COVENANT decisions are written to the selected tenant's chain.
+The tenant audit API exposes only tenant-local listing and full-chain verification.
+The global audit ledger remains reserved for legacy/global operations and does not
+receive authenticated tenant request events or tenant governance payloads.
