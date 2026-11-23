@@ -538,7 +538,9 @@ def test_tenant_admin_overview_is_owner_only_and_tenant_scoped(monkeypatch):
 
     current = {"principal": owner}
     monkeypatch.setattr(api, "tenant_admin", AdminStore())
-    monkeypatch.setattr(api, "audit", AuditLog())
+    test_audit = AuditLog()
+    monkeypatch.setattr(api, "audit", test_audit)
+    monkeypatch.setattr(api, "tenant_audit", None)
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: current["principal"])
     client = TestClient(api.app)
     headers = {"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant}
@@ -547,6 +549,7 @@ def test_tenant_admin_overview_is_owner_only_and_tenant_scoped(monkeypatch):
     assert response.status_code == 200
     assert response.json()["overview"]["active_owner_count"] == 1
     assert response.json()["overview"]["tenant_id"] == tenant
+    assert any(entry.get("actor") == owner.principal_id for entry in test_audit.list())
 
     current["principal"] = admin
     denied = client.get("/v1/tenant/admin/overview", headers=headers)
