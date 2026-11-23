@@ -178,12 +178,16 @@ means unlimited monthly assistant requests; a limit of zero blocks all assistant
 requests. Configure a tenant quota using a database-owner connection:
 
 ```sql
+BEGIN;
+SELECT set_config('omnis.tenant_id', '<tenant-uuid>', true);
+SELECT set_config('omnis.principal_id', '<owner-principal-uuid>', true);
 INSERT INTO omnis.tenant_usage_policy (tenant_id, monthly_request_limit, updated_by)
 VALUES ('<tenant-uuid>', 10000, '<owner-principal-uuid>')
 ON CONFLICT (tenant_id) DO UPDATE
 SET monthly_request_limit = EXCLUDED.monthly_request_limit,
     updated_by = EXCLUDED.updated_by,
     updated_at = now();
+COMMIT;
 ```
 
 The runtime role can read but cannot modify quota policy. Monthly quota rejections
