@@ -415,3 +415,43 @@ def test_tenant_admin_member_lifecycle_and_credential_revocation(postgres_dsn):
     admin.update_member(tenant, owner, "admin", "active", owner, "owner", audit)
     assert {item["role"] for item in admin.list_members(tenant)} == {"owner", "admin"}
     assert audit.verify() is True
+
+
+def test_tenant_audit_chains_are_isolated_and_append_only(postgres_dsn):
+    import psycopg
+    from omnis.postgres_tenant_audit import PostgresTenantAuditLog
+
+    marker = uuid4().hex
+    tenant_a, actor_a = _create_tenant_owner(postgres_dsn, "audit-a-" + marker)
+    tenant_b, actor_b = _create_tenant_owner(postgres_dsn, "audit-b-" + marker)
+    audit = PostgresTenantAuditLog(postgres_dsn)
+
+    first_a = audit.record("tenant.test.one", {
+        "tenant_id": tenant_a, "resource": "alpha",
+    }, actor=actor_a)
+    second_a = audit.record("tenant.test.two", {
+        "tenant_id": tenant_a, "resource": "beta",
+    }, actor=actor_a)
+    first_b = audit.record("tenant.test.one", {
+        "tenant_id": tenant_b, "resource": "other",
+    }, actor=actor_b)
+
+    assert first_a["i"] == 0
+    assert second_a["i"] == 1
+    assert first_b["i"] == 0
+    assert audit.verify(tenant_a)["valid"] is True
+    assert audit.verify(tenant_b)["valid"] is True
+    assert [event["payload"]["resource"] for event in audit.list(tenant_a)] == ["alpha", "beta"]
+    assert [event["payload"]["resource"] for event in audit.list(tenant_b)] == ["other"]
+
+    with psycopg.connect(postgres_dsn) as db:
+        flags = db.execute(
+            """SELECT relrowsecurity, relforcerowsecurity
+               FROM pg_class WHERE oid = 'omnis.tenant_audit_event'::regclass"""
+        ).fetchone()
+        assert flags == (True, True)
+        with pytest.raises(psycopg.Error):
+            db.execute(
+                "UPDATE omnis.tenant_audit_event SET event_type = 'tampered' WHERE tenant_id = %s AND event_index = 0",
+                (tenant_a,),
+            )
