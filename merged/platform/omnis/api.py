@@ -25,6 +25,7 @@ from .postgres_tenant_audit import (
 from .tenant_admin import TenantAdminError, TenantAdminStore, TenantAdminUnavailable
 from .tenant_decision_rules import TenantDecisionRuleStore, TenantRuleError, TenantRuleUnavailable
 from .tenant_assistant import TenantAssistantStore, TenantConversationError, TenantConversationUnavailable
+from .tenant_usage import TenantUsageError, TenantUsageStore, TenantUsageUnavailable
 from .protocols import AEON, Context
 from .recommend import Recommender
 from .identity import IdentityUnavailable, InvalidCredential, Principal, authenticate_api_key
@@ -49,6 +50,7 @@ tenant_audit = PostgresTenantAuditLog(config.DATABASE_URL) if config.DATABASE_UR
 tenant_admin = (TenantAdminStore(config.DATABASE_URL, os.environ.get('OMNIS_API_KEY_PEPPER', '')) if config.DATABASE_URL and len(os.environ.get('OMNIS_API_KEY_PEPPER', '')) >= 32 else None)
 tenant_decision_rules = TenantDecisionRuleStore(config.DATABASE_URL) if config.DATABASE_URL else None
 tenant_assistant = TenantAssistantStore(config.DATABASE_URL) if config.DATABASE_URL else None
+tenant_usage = TenantUsageStore(config.DATABASE_URL) if config.DATABASE_URL else None
 STATIC = Path(__file__).parent / "static"
 _HEALTH_CACHE_TTL_SECONDS = 2.0
 _health_lock = threading.Lock()
@@ -90,6 +92,7 @@ async def audit_api_requests(request: Request, call_next):
         "/v1/tenant/math/gcd-lcm",
         "/v1/tenant/decision-rules",
         "/v1/tenant/assistant/conversations",
+        "/v1/tenant/usage",
     }
     if path.startswith("/v1/tenant/assistant/conversations/") or path.startswith("/v1/tenant/decision-rules/") or path.startswith("/v1/tenant/members/") or path.startswith("/v1/tenant/credentials/"):
         tenant_auth_paths.add(path)
@@ -567,6 +570,23 @@ def fetch_tenant_source(body: SourceFetchIn,
         raise HTTPException(422, str(exc)) from exc
 
 
+def _tenant_usage_store() -> TenantUsageStore:
+    if tenant_usage is None:
+        raise HTTPException(503, "PostgreSQL tenant usage metering is not configured")
+    return tenant_usage
+
+
+@app.get("/v1/tenant/usage")
+def get_tenant_usage(principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("usage:read"):
+        raise HTTPException(403, "tenant role lacks usage:read")
+    try:
+        return _tenant_usage_store().summary(
+            principal.tenant_id, principal.principal_id, tenant_audit or audit)
+    except TenantUsageUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
 def _tenant_assistant_store() -> TenantAssistantStore:
     if tenant_assistant is None:
         raise HTTPException(503, "PostgreSQL tenant assistant storage is not configured")
@@ -628,6 +648,10 @@ async def send_tenant_assistant_message(
                "message_length": len(body.message.strip()),
                "history_messages": len(history)},
               actor=principal.principal_id, tenant_id=principal.tenant_id)
+        rpm = int(os.environ.get("OMNIS_TENANT_ASSISTANT_RPM", "30"))
+        _tenant_usage_store().consume(
+            principal.tenant_id, principal.principal_id, "assistant.message",
+            rpm, tenant_audit or audit)
         reply = await assistant.chat(body.message.strip(), history)
         updated = store.persist_exchange(
             principal.tenant_id, principal.principal_id, conversation_id,
@@ -637,6 +661,11 @@ async def send_tenant_assistant_message(
         status = 404 if "not found" in str(exc) else (422 if "must be a UUID" in str(exc) else 409)
         raise HTTPException(status, str(exc)) from exc
     except TenantConversationUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except TenantUsageError as exc:
+        detail = "tenant_rate_limit_exceeded" if str(exc) == "rate_limited" else "tenant_monthly_quota_exceeded"
+        raise HTTPException(429, detail) from exc
+    except TenantUsageUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     except assistant.AssistantUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc

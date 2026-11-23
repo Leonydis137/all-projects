@@ -14,6 +14,7 @@ Apply migrations in numeric order using a database-owner or migration role befor
 10. `010_tenant_audit.sql` creates an independent append-only audit chain per tenant with forced RLS.
 11. `011_tenant_decision_rules.sql` adds tenant-owned decision rules with forced RLS and principal attribution.
 12. `012_tenant_assistant_conversations.sql` adds tenant-isolated assistant conversations and message history with forced RLS.
+13. `013_tenant_usage_metering.sql` adds tenant usage events, rolling-minute counters, and configurable monthly request quotas with forced RLS.
 
 Example:
 
@@ -30,13 +31,14 @@ psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 009_tenant_bound_credentials.sq
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 010_tenant_audit.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 011_tenant_decision_rules.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 012_tenant_assistant_conversations.sql
+psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 013_tenant_usage_metering.sql
 ```
 
 Migration 004 intentionally contains `CREATE INDEX CONCURRENTLY` and must not be wrapped in an explicit transaction. If an interrupted concurrent index build leaves an invalid index, inspect `pg_index.indisvalid`, drop that invalid index with `DROP INDEX CONCURRENTLY omnis.evidence_idempotency_key_uq`, and rerun migration 004.
 
 Migration 005 wraps its constraint replacement in one transaction. If validation finds legacy rows with non-HTTP(S) URIs, the transaction rolls back and the original constraint remains in place; clean those rows before retrying.
 
-Set `OMNIS_DATABASE_URL` only after all twelve migrations have completed. This switches both evidence and audit storage from their local fallback implementations to PostgreSQL. During a rolling deployment, drain old application instances before relying on the durable audit chain; older instances do not write to PostgreSQL.
+Set `OMNIS_DATABASE_URL` only after all thirteen migrations have completed. This switches both evidence and audit storage from their local fallback implementations to PostgreSQL. During a rolling deployment, drain old application instances before relying on the durable audit chain; older instances do not write to PostgreSQL.
 
 ## Application-role provisioning
 
@@ -67,6 +69,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON omnis.tenant_decision_rule TO omnis_app;
 GRANT SELECT, INSERT ON omnis.tenant_assistant_conversation TO omnis_app;
 GRANT UPDATE (message_count, updated_at) ON omnis.tenant_assistant_conversation TO omnis_app;
 GRANT SELECT, INSERT ON omnis.tenant_assistant_message TO omnis_app;
+GRANT SELECT ON omnis.tenant_usage_policy TO omnis_app;
+GRANT SELECT, INSERT, UPDATE ON omnis.tenant_usage_minute TO omnis_app;
+GRANT SELECT, INSERT ON omnis.tenant_usage_event TO omnis_app;
 ```
 
 Do not grant DELETE, TRUNCATE, ownership, schema CREATE, or BYPASSRLS. Migration
@@ -153,3 +158,39 @@ legacy credential rows after reviewing the report, then apply migration 009 and
 issue new tenant-bound credentials. Do not reuse one legacy token across tenants.
 After migration 009, every remaining credential is bound to one tenant and cannot
 authenticate against another tenant even if the principal belongs to both.
+
+
+## Tenant usage metering and limits
+
+Apply migration `013_tenant_usage_metering.sql` after migration 012. Tenant assistant
+message submissions are recorded as one request unit before provider execution.
+Provider token usage is not inferred or fabricated; token-level metering can be added
+when the provider adapter exposes verified usage metadata.
+
+The rolling-minute rate limit defaults to 30 assistant requests per tenant per minute.
+Set `OMNIS_TENANT_ASSISTANT_RPM` to a positive integer to change the platform limit.
+Rate-limit attempts are recorded as rejected usage events and return HTTP 429 before
+the provider is called. The counter and usage event are committed with the tenant audit
+event in one transaction.
+
+Monthly quotas are explicit per-tenant policy rows. No policy row, or a NULL limit,
+means unlimited monthly assistant requests; a limit of zero blocks all assistant
+requests. Configure a tenant quota using a database-owner connection:
+
+```sql
+BEGIN;
+SELECT set_config('omnis.tenant_id', '<tenant-uuid>', true);
+SELECT set_config('omnis.principal_id', '<owner-principal-uuid>', true);
+INSERT INTO omnis.tenant_usage_policy (tenant_id, monthly_request_limit, updated_by)
+VALUES ('<tenant-uuid>', 10000, '<owner-principal-uuid>')
+ON CONFLICT (tenant_id) DO UPDATE
+SET monthly_request_limit = EXCLUDED.monthly_request_limit,
+    updated_by = EXCLUDED.updated_by,
+    updated_at = now();
+COMMIT;
+```
+
+The runtime role can read but cannot modify quota policy. Monthly quota rejections
+are persisted and return HTTP 429. `GET /v1/tenant/usage` returns the selected
+tenant's current calendar-month usage summary and requires `usage:read`. Usage
+events, minute counters, and policy reads are protected by forced RLS.

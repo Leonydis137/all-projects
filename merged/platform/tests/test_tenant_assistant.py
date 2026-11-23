@@ -11,6 +11,21 @@ TOKEN = "omnis_live_" + "A" * 48
 CONVERSATION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
 
+class FakeUsageStore:
+    def __init__(self):
+        self.calls = []
+        self.outcome = "accepted"
+    def consume(self, tenant_id, principal_id, operation, requests_per_minute, audit_log):
+        self.calls.append((tenant_id, principal_id, operation, requests_per_minute))
+        if self.outcome != "accepted":
+            from omnis.tenant_usage import TenantUsageError
+            raise TenantUsageError(self.outcome)
+        return {"operation": operation, "units": 1, "outcome": "accepted"}
+    def summary(self, tenant_id, principal_id, audit_log):
+        return {"period": "calendar_month", "accepted_requests": len(self.calls),
+                "monthly_request_limit": None, "unlimited_if_no_limit": True, "usage": []}
+
+
 class FakeAssistantStore:
     def __init__(self):
         self.conversations = {}
@@ -56,10 +71,12 @@ def _client(monkeypatch, role="operator"):
     principal = Principal(TENANT_ID, PRINCIPAL_ID, "member@example.test",
                           "Tenant Member", role, TOKEN[:32])
     tenant_log, global_log, store = AuditLog(), AuditLog(), FakeAssistantStore()
+    usage = FakeUsageStore()
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant: principal)
     monkeypatch.setattr(api, "tenant_audit", tenant_log)
     monkeypatch.setattr(api, "audit", global_log)
     monkeypatch.setattr(api, "tenant_assistant", store)
+    monkeypatch.setattr(api, "tenant_usage", usage)
     monkeypatch.setattr(api.governance, "evaluate", lambda action, context=None: {
         "allowed": True, "violations": [], "checked": [],
     })
@@ -158,3 +175,72 @@ def test_assistant_provider_failure_does_not_persist_exchange(monkeypatch):
     assert response.status_code == 503
     assert store.conversations[CONVERSATION_ID]["message_count"] == 0
     assert store.history_messages[CONVERSATION_ID] == []
+
+
+
+def test_assistant_requests_are_metered_per_tenant(monkeypatch):
+    client, _, _, store = _client()
+    store.conversations[CONVERSATION_ID] = {
+        "conversation_id": CONVERSATION_ID, "title": "Metered conversation",
+        "message_count": 0, "created_at": "2026-11-23T00:00:00+00:00",
+        "updated_at": "2026-11-23T00:00:00+00:00",
+    }
+    store.history_messages[CONVERSATION_ID] = []
+    async def fake_chat(message, history):
+        return "Metered response"
+    monkeypatch.setattr(api.assistant, "chat", fake_chat)
+    response = client.post(
+        f"/v1/tenant/assistant/conversations/{CONVERSATION_ID}/messages",
+        headers=_headers(), json={"message": "Count this request"},
+    )
+    assert response.status_code == 200
+    assert api.tenant_usage.calls == [(TENANT_ID, PRINCIPAL_ID, "assistant.message", 30)]
+
+
+def test_assistant_rate_limit_returns_429_without_calling_provider(monkeypatch):
+    client, _, _, store = _client()
+    store.conversations[CONVERSATION_ID] = {
+        "conversation_id": CONVERSATION_ID, "title": "Limited conversation",
+        "message_count": 0, "created_at": "2026-11-23T00:00:00+00:00",
+        "updated_at": "2026-11-23T00:00:00+00:00",
+    }
+    store.history_messages[CONVERSATION_ID] = []
+    api.tenant_usage.outcome = "rate_limited"
+    async def unexpected_chat(message, history):
+        raise AssertionError("provider must not be called after a limit rejection")
+    monkeypatch.setattr(api.assistant, "chat", unexpected_chat)
+    response = client.post(
+        f"/v1/tenant/assistant/conversations/{CONVERSATION_ID}/messages",
+        headers=_headers(), json={"message": "This should be limited"},
+    )
+    assert response.status_code == 429
+    assert response.json()["detail"] == "tenant_rate_limit_exceeded"
+
+
+
+def test_monthly_quota_rejection_returns_429_before_provider(monkeypatch):
+    client, _, _, store = _client()
+    store.conversations[CONVERSATION_ID] = {
+        "conversation_id": CONVERSATION_ID, "title": "Quota test",
+        "message_count": 0, "created_at": "2026-11-23T00:00:00+00:00",
+        "updated_at": "2026-11-23T00:00:00+00:00",
+    }
+    store.history_messages[CONVERSATION_ID] = []
+    api.tenant_usage.outcome = "quota_exceeded"
+    async def unexpected_chat(message, history):
+        raise AssertionError("provider must not be called after a quota rejection")
+    monkeypatch.setattr(api.assistant, "chat", unexpected_chat)
+    response = client.post(
+        f"/v1/tenant/assistant/conversations/{CONVERSATION_ID}/messages",
+        headers=_headers(), json={"message": "Over quota"},
+    )
+    assert response.status_code == 429
+    assert response.json()["detail"] == "tenant_monthly_quota_exceeded"
+
+
+def test_tenant_usage_summary_is_available_to_reader(monkeypatch):
+    client, _, _, _ = _client(role="reader")
+    response = client.get("/v1/tenant/usage", headers=_headers())
+    assert response.status_code == 200
+    assert response.json()["period"] == "calendar_month"
+    assert response.json()["unlimited_if_no_limit"] is True
