@@ -206,4 +206,4 @@ COVENANT and are committed with their principal-attributed audit event in the sa
 database transaction. The tenant decision endpoint evaluates that tenant's enabled
 rules in priority order alongside the platform defaults. PostgreSQL forced RLS and
 the explicit tenant predicate prevent cross-tenant rule access. The legacy global
-`/v1/rules` API remains behind the shared token and is not tenant-aware.
+`/v1/decision/rules` API remains behind the shared token and is not tenant-aware.
