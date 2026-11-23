@@ -15,10 +15,10 @@ from typing import Any, Callable
 
 _TOKEN_RE = re.compile(r"^omnis_live_[A-Za-z0-9_-]{40,}$")
 _ROLE_PERMISSIONS = {
-    "owner": frozenset({"identity:read", "tenant:manage", "members:manage", "credentials:manage", "evidence:read", "evidence:write", "governance:execute"}),
-    "admin": frozenset({"identity:read", "members:manage", "credentials:manage", "evidence:read", "evidence:write", "governance:execute"}),
+    "owner": frozenset({"identity:read", "tenant:manage", "members:manage", "credentials:manage", "evidence:read", "evidence:write", "governance:execute", "audit:read"}),
+    "admin": frozenset({"identity:read", "members:manage", "credentials:manage", "evidence:read", "evidence:write", "governance:execute", "audit:read"}),
     "operator": frozenset({"identity:read", "evidence:read", "evidence:write", "governance:execute"}),
-    "analyst": frozenset({"identity:read", "evidence:read", "governance:execute"}),
+    "analyst": frozenset({"identity:read", "evidence:read", "governance:execute", "audit:read"}),
     "reader": frozenset({"identity:read", "evidence:read"}),
 }
 
