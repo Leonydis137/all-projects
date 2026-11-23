@@ -556,6 +556,69 @@ def fetch_tenant_source(body: SourceFetchIn,
         raise HTTPException(422, str(exc)) from exc
 
 
+def _tenant_rule_store() -> TenantDecisionRuleStore:
+    if tenant_decision_rules is None:
+        raise HTTPException(503, "PostgreSQL tenant decision rules are not configured")
+    return tenant_decision_rules
+
+
+@app.get("/v1/tenant/decision-rules")
+def list_tenant_decision_rules(principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("decision_rules:read"):
+        raise HTTPException(403, "tenant role lacks decision_rules:read")
+    try:
+        return {"rules": _tenant_rule_store().list_rules(principal.tenant_id, include_disabled=True)}
+    except TenantRuleUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.post("/v1/tenant/decision-rules")
+def create_tenant_decision_rule(body: TenantDecisionRuleIn,
+                                principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("decision_rules:manage"):
+        raise HTTPException(403, "tenant role lacks decision_rules:manage")
+    try:
+        _tenant_operation(principal, "tenant.decision_rule.create", {"rule_name": body.name})
+        result = _tenant_rule_store().create_rule(
+            principal.tenant_id, principal.principal_id, body.model_dump(), tenant_audit or audit)
+        return {"rule": result}
+    except TenantRuleError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except TenantRuleUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.put("/v1/tenant/decision-rules/{rule_id}")
+def update_tenant_decision_rule(rule_id: str, body: TenantDecisionRuleIn,
+                                principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("decision_rules:manage"):
+        raise HTTPException(403, "tenant role lacks decision_rules:manage")
+    try:
+        _tenant_operation(principal, "tenant.decision_rule.update", {"rule_id": rule_id, "rule_name": body.name})
+        result = _tenant_rule_store().update_rule(
+            principal.tenant_id, principal.principal_id, rule_id, body.model_dump(), tenant_audit or audit)
+        return {"rule": result}
+    except TenantRuleError as exc:
+        raise HTTPException(404 if "not found" in str(exc) else 422, str(exc)) from exc
+    except TenantRuleUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.delete("/v1/tenant/decision-rules/{rule_id}")
+def delete_tenant_decision_rule(rule_id: str,
+                                principal: Principal = Depends(tenant_identity)) -> dict:
+    if not principal.allows("decision_rules:manage"):
+        raise HTTPException(403, "tenant role lacks decision_rules:manage")
+    try:
+        _tenant_operation(principal, "tenant.decision_rule.delete", {"rule_id": rule_id})
+        return _tenant_rule_store().delete_rule(
+            principal.tenant_id, principal.principal_id, rule_id, tenant_audit or audit)
+    except TenantRuleError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except TenantRuleUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
 def _tenant_operation(
     principal: Principal,
     kind: str,
