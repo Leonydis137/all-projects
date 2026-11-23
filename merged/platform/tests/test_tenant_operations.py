@@ -106,6 +106,22 @@ def test_tenant_operation_cannot_be_used_by_reader_role(monkeypatch):
     assert global_log.list() == []
 
 
+def test_tenant_credential_is_not_accepted_by_legacy_global_route(monkeypatch):
+    client, tenant_log, global_log, _ = _client(monkeypatch)
+    monkeypatch.setattr(api.config, "API_TOKEN", "legacy-shared-token")
+    response = client.post(
+        "/v1/decide",
+        headers=_headers(),
+        json={"context": {"risk_level": 9}},
+    )
+
+    assert response.status_code == 401
+    assert tenant_log.list() == []
+    assert [entry["kind"] for entry in global_log.list()] == [
+        "http.request.started", "http.request.completed",
+    ]
+
+
 def test_tenant_math_operation_returns_result_and_tenant_audit(monkeypatch):
     client, tenant_log, _, _ = _client(monkeypatch)
     response = client.post(
