@@ -85,19 +85,32 @@ class TenantAdminStore:
         with self._connect() as db:
             with db.cursor() as cur:
                 self._lock_tenant(cur, tenant)
-                cur.execute("SELECT principal_id, status, display_name FROM omnis.principal WHERE email = %s FOR UPDATE", (email,))
-                principal = cur.fetchone()
-                if principal is None:
-                    cur.execute(
-                        "INSERT INTO omnis.principal (email, display_name) VALUES (%s, %s) RETURNING principal_id",
-                        (email, display_name),
-                    )
-                    principal_id = str(cur.fetchone()["principal_id"])
+                cur.execute(
+                    """INSERT INTO omnis.principal (email, display_name)
+                       VALUES (%s, %s) ON CONFLICT (email) DO NOTHING
+                       RETURNING principal_id""",
+                    (email, display_name),
+                )
+                inserted_principal = cur.fetchone()
+                if inserted_principal:
+                    principal_id = str(inserted_principal["principal_id"])
                 else:
+                    cur.execute(
+                        "SELECT principal_id, status, display_name FROM omnis.principal WHERE email = %s FOR UPDATE",
+                        (email,),
+                    )
+                    principal = cur.fetchone()
+                    if principal is None or principal["status"] != "active":
+                        raise TenantAdminError("principal is unavailable")
                     principal_id = str(principal["principal_id"])
-                    if principal["status"] != "active":
-                        raise TenantAdminError("principal is disabled")
                     display_name = principal["display_name"]
+                cur.execute(
+                    """UPDATE omnis.api_credential SET revoked_at = now()
+                       WHERE tenant_id = %s AND principal_id = %s AND revoked_at IS NULL
+                       RETURNING credential_id""",
+                    (tenant, principal_id),
+                )
+                revoked_credentials = len(cur.fetchall())
                 cur.execute(
                     """INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status)
                        VALUES (%s, %s, %s, 'active')
@@ -111,7 +124,8 @@ class TenantAdminStore:
                     raise TenantAdminError("principal is already an active member of this tenant")
                 audit_log.record_in_transaction(
                     db, "tenant.member.added",
-                    {"tenant_id": tenant, "principal_id": principal_id, "role": role}, actor=actor,
+                    {"tenant_id": tenant, "principal_id": principal_id, "role": role,
+                     "revoked_credentials": revoked_credentials}, actor=actor,
                 )
         return {"tenant_id": tenant, "principal_id": principal_id, "email": email,
                 "display_name": display_name, "role": role, "status": "active"}
