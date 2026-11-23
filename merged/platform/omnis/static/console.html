@@ -67,6 +67,21 @@ B conv <input id="cb" value="70" size="5"> / n <input id="nb" value="1000" size=
     <p id="tenant_status">Not connected. Tenant credentials are never saved by this console.</p>
     <div id="tenant_identity"></div>
   </div>
+  <div class="tenant-layout" id="tenant_admin_workspace" hidden>
+    <div class="tenant-panel"><h3>MEMBERSHIP ADMINISTRATION</h3>
+      <button id="tenant_members_refresh">Refresh members</button><div id="tenant_members" class="tenant-list"></div>
+      <div id="tenant_member_editor" hidden><label>Invite or reactivate by email</label><input id="tenant_member_email" type="email" autocomplete="off" placeholder="person@example.com">
+        <label>Display name</label><input id="tenant_member_name" autocomplete="off" placeholder="Full name">
+        <label>Role</label><select id="tenant_member_role"><option value="reader">Reader</option><option value="analyst">Analyst</option><option value="operator">Operator</option><option value="admin">Admin</option><option value="owner">Owner</option></select>
+        <button id="tenant_member_add">Add member</button></div></div>
+    <div class="tenant-panel"><h3>CREDENTIAL LIFECYCLE</h3><button id="tenant_credentials_refresh">Refresh credentials</button>
+      <div id="tenant_credentials" class="tenant-list"></div><div id="tenant_credential_editor" hidden>
+        <label>Issue credential to active member</label><select id="tenant_credential_member"></select>
+        <label>Credential label</label><input id="tenant_credential_label" value="console-issued" maxlength="100">
+        <label>Expires in days (1–365)</label><input id="tenant_credential_days" type="number" min="1" max="365" value="90">
+        <button id="tenant_credential_issue">Issue credential</button><pre id="tenant_credential_once" hidden></pre></div>
+      <p class="tag">Raw tokens are displayed once only. Copy to a secret manager; they cannot be retrieved later.</p></div>
+  </div>
   <div class="tenant-layout">
     <div class="tenant-panel"><h3>USAGE · CURRENT MONTH</h3><button id="tenant_usage_refresh">Refresh usage</button><pre id="tenant_usage">Connect to load tenant usage.</pre></div>
     <div class="tenant-panel"><h3>TENANT AUDIT</h3><button id="tenant_audit_refresh">Refresh audit</button><button id="tenant_audit_verify">Verify chain</button><pre id="tenant_audit">Connect with audit:read permission.</pre></div>
@@ -105,7 +120,7 @@ async function loadCatalog(){const r=await fetch('/v1/catalog',{headers:hdr()});
  ${Object.entries(p.languages||{}).slice(0,3).map(([k,n])=>`<span class="tag">${k} ${n}</span>`).join('')}
  <br><small>${(p.platform_features||[]).map(f=>`<span class="tag">${f}</span>`).join('')}</small></div>`).join('')}
 
-let tenantSession=null, selectedTenantConversation=null, tenantRulesCache=[];
+let tenantSession=null, selectedTenantConversation=null, tenantRulesCache=[], tenantMembersCache=[];
 const tenantEl=id=>$('tenant_'+id);
 const tenantHeaders=()=>({
   Authorization:'Bearer '+(tenantSession?.token||''),
@@ -128,7 +143,7 @@ async function connectTenant(){
   tenantSession={token,tenant,permissions:[]};selectedTenantConversation=null;
   try{
     const me=await tenantRequest('/v1/identity/me');
-    tenantSession.permissions=me.permissions||[];
+    tenantSession.permissions=me.permissions||[];tenantSession.role=me.role;tenantEl('member_role').querySelector('option[value="owner"]').hidden=me.role!=='owner';
     tenantEl('identity').textContent=me.display_name+' · '+me.email+' · '+me.role+' · '+me.tenant_id;
     tenantStatus('Authenticated · '+me.permissions.join(', '));
     await refreshTenantWorkspace();
@@ -136,13 +151,73 @@ async function connectTenant(){
 }
 function disconnectTenant(){
   tenantSession=null;selectedTenantConversation=null;
-  tenantEl('token').value='';tenantEl('id').value='';tenantEl('identity').textContent='';
+  tenantEl('token').value='';tenantEl('id').value='';tenantEl('identity').textContent='';tenantEl('credential_once').textContent='';tenantEl('credential_once').hidden=true;
   tenantEl('conversations').replaceChildren();tenantEl('messages').replaceChildren();
-  tenantStatus('Disconnected. Credentials cleared from this page session.');
+  tenantEl('members').replaceChildren();tenantEl('credentials').replaceChildren();
+  tenantEl('admin_workspace').hidden=true;tenantEl('member_editor').hidden=true;tenantEl('credential_editor').hidden=true;
+  ['usage','audit','evidence','operations','chat_status','credential_once'].forEach(id=>{tenantEl(id).textContent='';});
+  tenantEl('credential_once').hidden=true;tenantEl('rules').replaceChildren();
+  tenantStatus('Disconnected. Tenant credentials and displayed tenant data cleared from this page session.');
 }
 async function refreshTenantWorkspace(){
   if(!tenantSession)return;
   await Promise.allSettled([loadTenantUsage(),loadTenantAudit(),loadTenantRules(),loadTenantConversations(),loadTenantEvidence()]);
+  const canMembers=tenantSession.permissions.includes('members:manage');
+  const canCredentials=tenantSession.permissions.includes('credentials:manage');
+  tenantEl('admin_workspace').hidden=!canMembers&&!canCredentials;
+  tenantEl('member_editor').hidden=!canMembers;
+  tenantEl('credential_editor').hidden=!canCredentials;
+  if(canMembers)await loadTenantMembers();
+  if(canCredentials)await loadTenantCredentials();
+}
+async function loadTenantMembers(){
+  const host=tenantEl('members');host.replaceChildren();
+  try{
+    const data=await tenantRequest('/v1/tenant/members');tenantMembersCache=data.members||[];
+    const memberSelect=tenantEl('credential_member');memberSelect.replaceChildren();
+    for(const member of tenantMembersCache){
+      if(member.membership_status==='active'&&member.principal_status==='active'){const option=document.createElement('option');option.value=member.principal_id;option.textContent=member.email+' · '+member.role;memberSelect.append(option)}
+      const row=tenantNode('div','tenant-message');
+      row.append(tenantNode('strong','',member.display_name+' · '+member.email));
+      row.append(tenantNode('small','',member.principal_id+' · '+member.membership_status));
+      const role=document.createElement('select');
+      ['reader','analyst','operator','admin',...(tenantSession.role==='owner'?['owner']:[])].forEach(value=>{const opt=document.createElement('option');opt.value=value;opt.textContent=value;role.append(opt)});role.value=member.role;
+      const status=document.createElement('select');['active','suspended'].forEach(value=>{const opt=document.createElement('option');opt.value=value;opt.textContent=value;status.append(opt)});status.value=member.membership_status;
+      const save=tenantNode('button','','Save');save.type='button';
+      save.addEventListener('click',async()=>{try{await tenantRequest('/v1/tenant/members/'+encodeURIComponent(member.principal_id),'PATCH',{role:role.value,status:status.value});tenantStatus('Membership updated.');await loadTenantMembers();await loadTenantCredentials()}catch(e){tenantStatus(e.message,true)}});
+      if(member.role==='owner'&&tenantSession.role!=='owner'){role.disabled=true;status.disabled=true;save.disabled=true;}
+      row.append(role,status,save);host.append(row);
+    }
+    if(!tenantMembersCache.length)host.append(tenantNode('span','','No members found.'));
+  }catch(e){host.append(tenantNode('span','bad',e.message))}
+}
+async function addTenantMember(){
+  try{const body={email:tenantEl('member_email').value.trim(),display_name:tenantEl('member_name').value.trim(),role:tenantEl('member_role').value};
+    await tenantRequest('/v1/tenant/members','POST',body);tenantEl('member_email').value='';tenantEl('member_name').value='';
+    tenantStatus('Member added or reactivated. Issue a new credential separately.');await loadTenantMembers();
+  }catch(e){tenantStatus(e.message,true)}
+}
+async function loadTenantCredentials(){
+  const host=tenantEl('credentials');host.replaceChildren();
+  try{const data=await tenantRequest('/v1/tenant/credentials');
+    for(const credential of (data.credentials||[])){
+      const row=tenantNode('div','tenant-message');
+      row.append(tenantNode('strong','',credential.label+' · '+credential.email));
+      row.append(tenantNode('small','',credential.credential_id+' · created '+credential.created_at+' · expires '+credential.expires_at+' · '+(credential.revoked_at?'revoked':'active')));
+      if(!credential.revoked_at){const revoke=tenantNode('button','','Revoke');revoke.type='button';
+        revoke.addEventListener('click',async()=>{if(!confirm('Revoke this credential immediately?'))return;try{await tenantRequest('/v1/tenant/credentials/'+encodeURIComponent(credential.credential_id),'DELETE');tenantStatus('Credential revoked.');await loadTenantCredentials()}catch(e){tenantStatus(e.message,true)}});row.append(revoke)}
+      host.append(row);
+    }
+    if(!(data.credentials||[]).length)host.append(tenantNode('span','','No credentials issued.'));
+  }catch(e){host.append(tenantNode('span','bad',e.message))}
+}
+async function issueTenantCredential(){
+  try{const principal_id=tenantEl('credential_member').value;if(!principal_id)throw new Error('Select an active member first.');
+    const expires_in_days=Number(tenantEl('credential_days').value);
+    const data=await tenantRequest('/v1/tenant/credentials','POST',{principal_id,label:tenantEl('credential_label').value.trim(),expires_in_days});
+    tenantEl('credential_once').hidden=false;tenantPre('credential_once','COPY THIS TOKEN NOW — IT WILL NOT BE SHOWN AGAIN\n'+data.api_token_once+'\nCredential ID: '+data.credential_id+'\nExpires: '+data.expires_at);
+    tenantStatus('Credential issued. Store the token securely before closing this page.');await loadTenantCredentials();
+  }catch(e){tenantStatus(e.message,true)}
 }
 async function loadTenantUsage(){try{tenantPre('usage',await tenantRequest('/v1/tenant/usage'))}catch(e){tenantPre('usage',e.message)}}
 async function loadTenantAudit(){try{tenantPre('audit',await tenantRequest('/v1/tenant/audit'))}catch(e){tenantPre('audit',e.message)}}
@@ -213,6 +288,10 @@ async function sendTenantMessage(){
   }catch(e){tenantPre('chat_status',e.message);tenantEl('chat').value=message}
   finally{tenantEl('send').disabled=false}
 }
+tenantEl('members_refresh').addEventListener('click',loadTenantMembers);
+tenantEl('member_add').addEventListener('click',addTenantMember);
+tenantEl('credentials_refresh').addEventListener('click',loadTenantCredentials);
+tenantEl('credential_issue').addEventListener('click',issueTenantCredential);
 tenantEl('connect').addEventListener('click',connectTenant);
 tenantEl('disconnect').addEventListener('click',disconnectTenant);
 tenantEl('usage_refresh').addEventListener('click',loadTenantUsage);

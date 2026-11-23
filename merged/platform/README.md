@@ -249,6 +249,8 @@ permissions to show available tenant functions.
 The tenant workspace provides:
 
 - Tenant identity and role/permission visibility.
+- Membership administration: add/reactivate members, change roles, and suspend/reactivate access when permitted.
+- Credential lifecycle: issue expiring tenant-bound credentials, inspect metadata, and revoke credentials; raw tokens are shown once only.
 - Current-month request usage and configured monthly quota.
 - Tenant evidence listing and ledger verification (when permitted).
 - Tenant audit event listing and hash-chain verification (when permitted).

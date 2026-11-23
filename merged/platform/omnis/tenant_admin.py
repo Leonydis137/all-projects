@@ -71,6 +71,23 @@ class TenantAdminStore:
                 )
                 return list(cur.fetchall())
 
+    def list_credentials(self, tenant_id: str) -> list[dict[str, Any]]:
+        """Return credential metadata only; bearer secrets are never recoverable."""
+        tenant = self._uuid(tenant_id)
+        with self._connect() as db:
+            with db.cursor() as cur:
+                cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant,))
+                cur.execute(
+                    """SELECT c.credential_id, c.principal_id, p.email, c.label,
+                              c.expires_at, c.revoked_at, c.created_at
+                       FROM omnis.api_credential c
+                       JOIN omnis.principal p ON p.principal_id = c.principal_id
+                       WHERE c.tenant_id = %s
+                       ORDER BY c.created_at DESC, c.credential_id""",
+                    (tenant,),
+                )
+                return list(cur.fetchall())
+
     def add_member(self, tenant_id: str, email: str, display_name: str, role: str,
                    actor_id: str, actor_role: str, audit_log) -> dict[str, Any]:
         tenant, actor = self._uuid(tenant_id), self._uuid(actor_id)
