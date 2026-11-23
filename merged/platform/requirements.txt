@@ -10,4 +10,4 @@ scipy>=1.11
 statsmodels>=0.14
 # needed by the merged COVENANT package imports
 cryptography>=42
-pytest>=8
+pytest>=9.2.0
