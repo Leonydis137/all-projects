@@ -565,7 +565,7 @@ def _tenant_operation(
 @app.post("/v1/tenant/decide")
 def tenant_decide(body: DecideIn, principal: Principal = Depends(tenant_identity)) -> dict:
     _tenant_operation(principal, "tenant.decision", body.attributes, body.context)
-    return engine.decide(body.context)
+    return default_engine().decide(body.context)
 
 
 @app.post("/v1/tenant/recommend")
@@ -582,7 +582,7 @@ def tenant_recommend(body: RecommendIn, principal: Principal = Depends(tenant_id
 @app.post("/v1/tenant/protocols/respond")
 def tenant_protocols_respond(body: RespondIn, principal: Principal = Depends(tenant_identity)) -> dict:
     _tenant_operation(principal, "tenant.protocol.respond", body.attributes)
-    return aeon.respond(Context(body.emotional_tone, body.user_intent, body.environment_state))
+    return AEON().respond(Context(body.emotional_tone, body.user_intent, body.environment_state))
 
 
 @app.post("/v1/tenant/stats/ab")
