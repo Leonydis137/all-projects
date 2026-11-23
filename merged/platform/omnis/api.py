@@ -24,6 +24,7 @@ from .postgres_tenant_audit import (
 )
 from .tenant_admin import TenantAdminError, TenantAdminStore, TenantAdminUnavailable
 from .tenant_decision_rules import TenantDecisionRuleStore, TenantRuleError, TenantRuleUnavailable
+from .tenant_assistant import TenantAssistantStore, TenantConversationError, TenantConversationUnavailable
 from .protocols import AEON, Context
 from .recommend import Recommender
 from .identity import IdentityUnavailable, InvalidCredential, Principal, authenticate_api_key
@@ -47,6 +48,7 @@ tenant_evidence = PostgresTenantEvidenceLedger(config.DATABASE_URL) if config.DA
 tenant_audit = PostgresTenantAuditLog(config.DATABASE_URL) if config.DATABASE_URL else None
 tenant_admin = (TenantAdminStore(config.DATABASE_URL, os.environ.get('OMNIS_API_KEY_PEPPER', '')) if config.DATABASE_URL and len(os.environ.get('OMNIS_API_KEY_PEPPER', '')) >= 32 else None)
 tenant_decision_rules = TenantDecisionRuleStore(config.DATABASE_URL) if config.DATABASE_URL else None
+tenant_assistant = TenantAssistantStore(config.DATABASE_URL) if config.DATABASE_URL else None
 STATIC = Path(__file__).parent / "static"
 _HEALTH_CACHE_TTL_SECONDS = 2.0
 _health_lock = threading.Lock()
@@ -87,8 +89,9 @@ async def audit_api_requests(request: Request, call_next):
         "/v1/tenant/stats/posterior",
         "/v1/tenant/math/gcd-lcm",
         "/v1/tenant/decision-rules",
+        "/v1/tenant/assistant/conversations",
     }
-    if path.startswith("/v1/tenant/decision-rules/") or path.startswith("/v1/tenant/members/") or path.startswith("/v1/tenant/credentials/"):
+    if path.startswith("/v1/tenant/assistant/conversations/") or path.startswith("/v1/tenant/decision-rules/") or path.startswith("/v1/tenant/members/") or path.startswith("/v1/tenant/credentials/"):
         tenant_auth_paths.add(path)
     if path in tenant_auth_paths:
         authorization = request.headers.get("authorization", "")
@@ -274,7 +277,7 @@ class TenantMemberUpdateIn(BaseModel):
     status: str = "active"
 
 
-class TenantDecisionRuleIn(BaseModel):
+class TenantAssistantConversationIn(BaseModel):\n    title: str = Field(default="New conversation", min_length=1, max_length=160)\n\n\nclass TenantAssistantMessageIn(BaseModel):\n    message: str = Field(min_length=1, max_length=12000)\n\n\nclass TenantDecisionRuleIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     field: str = Field(min_length=1, max_length=128)
     op: str
@@ -554,6 +557,79 @@ def fetch_tenant_source(body: SourceFetchIn,
         return JSONResponse(status_code=503, content={"detail": "tenant_evidence_integrity_error"})
     except EvidenceValidationError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+def _tenant_assistant_store() -> TenantAssistantStore:
+    if tenant_assistant is None:
+        raise HTTPException(503, "PostgreSQL tenant assistant storage is not configured")
+    return tenant_assistant
+
+
+def _require_tenant_assistant(principal: Principal) -> None:
+    if not principal.allows("assistant:use"):
+        raise HTTPException(403, "tenant role lacks assistant:use")
+
+
+@app.get("/v1/tenant/assistant/conversations")
+def list_tenant_assistant_conversations(limit: int = 50,
+                                        principal: Principal = Depends(tenant_identity)) -> dict:
+    _require_tenant_assistant(principal)
+    try:
+        return {"conversations": _tenant_assistant_store().list(
+            principal.tenant_id, principal.principal_id, limit)}
+    except TenantConversationError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except TenantConversationUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.post("/v1/tenant/assistant/conversations")
+def create_tenant_assistant_conversation(
+    body: TenantAssistantConversationIn,
+    principal: Principal = Depends(tenant_identity),
+) -> dict:
+    _require_tenant_assistant(principal)
+    try:
+        gated("tenant.assistant.conversation.create",
+              {"title_length": len(body.title.strip())},
+              actor=principal.principal_id, tenant_id=principal.tenant_id)
+        result = _tenant_assistant_store().create(
+            principal.tenant_id, principal.principal_id, body.title, tenant_audit or audit)
+        return {"conversation": result}
+    except TenantConversationError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except TenantConversationUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.post("/v1/tenant/assistant/conversations/{conversation_id}/messages")
+async def send_tenant_assistant_message(
+    conversation_id: str,
+    body: TenantAssistantMessageIn,
+    principal: Principal = Depends(tenant_identity),
+) -> dict:
+    _require_tenant_assistant(principal)
+    try:
+        store = _tenant_assistant_store()
+        metadata, history = store.history(
+            principal.tenant_id, principal.principal_id, conversation_id, limit=20)
+        gated("tenant.assistant.chat",
+              {"conversation_id": metadata["conversation_id"],
+               "message_length": len(body.message.strip()),
+               "history_messages": len(history)},
+              actor=principal.principal_id, tenant_id=principal.tenant_id)
+        reply = await assistant.chat(body.message.strip(), history)
+        updated = store.persist_exchange(
+            principal.tenant_id, principal.principal_id, conversation_id,
+            body.message, reply, metadata["message_count"], tenant_audit or audit)
+        return {"conversation": updated, "reply": reply}
+    except TenantConversationError as exc:
+        status = 404 if "not found" in str(exc) else 409
+        raise HTTPException(status, str(exc)) from exc
+    except TenantConversationUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except assistant.AssistantUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
 
 
 def _tenant_rule_store() -> TenantDecisionRuleStore:
