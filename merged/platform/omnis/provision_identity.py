@@ -10,6 +10,7 @@ import os
 import re
 import secrets
 import sys
+from uuid import uuid4
 
 from .identity import digest_api_key
 
@@ -56,11 +57,12 @@ def main() -> int:
         from .postgres_connection import connect_postgres
         with connect_postgres(dsn, dict_row, statement_timeout_ms=10_000) as db:
             with db.cursor() as cur:
+                tenant_id = str(uuid4())
+                cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant_id,))
                 cur.execute(
-                    "INSERT INTO omnis.tenant (slug, display_name) VALUES (%s, %s) RETURNING tenant_id",
-                    (slug, tenant_name),
+                    "INSERT INTO omnis.tenant (tenant_id, slug, display_name) VALUES (%s, %s, %s)",
+                    (tenant_id, slug, tenant_name),
                 )
-                tenant_id = str(cur.fetchone()["tenant_id"])
                 cur.execute(
                     "INSERT INTO omnis.principal (email, display_name) VALUES (%s, %s) RETURNING principal_id",
                     (email, display_name),
