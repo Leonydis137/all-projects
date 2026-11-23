@@ -73,6 +73,9 @@ B conv <input id="cb" value="70" size="5"> / n <input id="nb" value="1000" size=
     <div class="tenant-panel"><h3>DECISION RULES</h3><button id="tenant_rules_refresh">Refresh rules</button><div id="tenant_rules" class="tenant-list"></div>
       <div id="tenant_rule_editor" hidden><label>New rule (JSON)</label><textarea id="tenant_rule_json">{"name":"High risk review","field":"risk_level","op":"gte","value":8,"action":"require_review","priority":100}</textarea><button id="tenant_rule_create">Create rule</button></div>
     </div>
+    <div class="tenant-panel"><h3>TENANT EVIDENCE</h3><button id="tenant_evidence_refresh">List records</button><button id="tenant_evidence_verify">Verify ledger</button><pre id="tenant_evidence">Connect with evidence:read permission.</pre></div>
+    <div class="tenant-panel"><h3>GOVERNED OPERATIONS</h3><label>Decision context (JSON)</label><textarea id="tenant_decision_context">{"risk_level":8}</textarea><button id="tenant_decide">Run tenant decision</button>
+      <label>AEON emotional tone</label><select id="tenant_tone"><option>neutral</option><option>happy</option><option>relaxed</option><option>frustrated</option><option>anxious</option><option>confident</option></select><button id="tenant_protocol">Run AEON response</button><pre id="tenant_operations">Requires governance:execute.</pre></div>
   </div>
   <div class="tenant-layout">
     <div class="tenant-panel"><h3>ASSISTANT CONVERSATIONS</h3><div class="row"><input id="tenant_conversation_title" placeholder="New conversation title"><button id="tenant_conversation_create">New</button></div><div id="tenant_conversations" class="tenant-list"></div></div>
@@ -139,11 +142,15 @@ function disconnectTenant(){
 }
 async function refreshTenantWorkspace(){
   if(!tenantSession)return;
-  await Promise.allSettled([loadTenantUsage(),loadTenantAudit(),loadTenantRules(),loadTenantConversations()]);
+  await Promise.allSettled([loadTenantUsage(),loadTenantAudit(),loadTenantRules(),loadTenantConversations(),loadTenantEvidence()]);
 }
 async function loadTenantUsage(){try{tenantPre('usage',await tenantRequest('/v1/tenant/usage'))}catch(e){tenantPre('usage',e.message)}}
 async function loadTenantAudit(){try{tenantPre('audit',await tenantRequest('/v1/tenant/audit'))}catch(e){tenantPre('audit',e.message)}}
 async function verifyTenantAudit(){try{tenantPre('audit',await tenantRequest('/v1/tenant/audit/verify'))}catch(e){tenantPre('audit',e.message)}}
+async function loadTenantEvidence(){try{tenantPre('evidence',await tenantRequest('/v1/tenant/evidence'))}catch(e){tenantPre('evidence',e.message)}}
+async function verifyTenantEvidence(){try{tenantPre('evidence',await tenantRequest('/v1/tenant/evidence/verify'))}catch(e){tenantPre('evidence',e.message)}}
+async function runTenantDecision(){try{const context=JSON.parse(tenantEl('decision_context').value);tenantPre('operations',await tenantRequest('/v1/tenant/decide','POST',{context,attributes:{}}))}catch(e){tenantPre('operations',e.message)}}
+async function runTenantProtocol(){try{tenantPre('operations',await tenantRequest('/v1/tenant/protocols/respond','POST',{emotional_tone:tenantEl('tone').value,attributes:{}}))}catch(e){tenantPre('operations',e.message)}}
 async function loadTenantRules(){
   const host=tenantEl('rules');host.replaceChildren();
   try{
@@ -212,6 +219,10 @@ tenantEl('usage_refresh').addEventListener('click',loadTenantUsage);
 tenantEl('audit_refresh').addEventListener('click',loadTenantAudit);
 tenantEl('audit_verify').addEventListener('click',verifyTenantAudit);
 tenantEl('rules_refresh').addEventListener('click',loadTenantRules);
+tenantEl('evidence_refresh').addEventListener('click',loadTenantEvidence);
+tenantEl('evidence_verify').addEventListener('click',verifyTenantEvidence);
+tenantEl('decide').addEventListener('click',runTenantDecision);
+tenantEl('protocol').addEventListener('click',runTenantProtocol);
 tenantEl('rule_create').addEventListener('click',createTenantRule);
 tenantEl('conversation_create').addEventListener('click',createTenantConversation);
 tenantEl('send').addEventListener('click',sendTenantMessage);
