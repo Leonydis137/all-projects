@@ -149,7 +149,7 @@ They are not transparently migrated or exposed through tenant credentials.
 
 ## Tenant administration and source acquisition
 
-After migrations 006-008, tenant owners and admins can manage memberships and API
+After migrations 006-009, tenant owners and admins can manage memberships and API
 credentials using tenant credentials:
 
 - `GET /v1/tenant/members` — list memberships.
