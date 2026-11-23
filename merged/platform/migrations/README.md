@@ -48,7 +48,7 @@ Do not grant table ownership, UPDATE, DELETE, TRUNCATE, schema CREATE, or migrat
 
 Migration 003 leaves `event_json` nullable to permit schema rollout over databases with existing audit rows. Existing rows without canonical bodies deliberately fail closed during full audit verification; reconcile or migrate those records before enabling PostgreSQL audit mode.
 
-After migrations 006-008, grant the non-owner runtime role only the operations required by the application:
+After migrations 006-009, grant the non-owner runtime role only the operations required by the application:
 
 ```sql
 GRANT SELECT ON omnis.tenant TO omnis_app;
@@ -60,7 +60,7 @@ GRANT USAGE, SELECT ON SEQUENCE omnis.tenant_evidence_sequence_seq TO omnis_app;
 
 Do not grant DELETE, TRUNCATE, ownership, schema CREATE, or BYPASSRLS. Migration
 008 enables and forces RLS on `tenant`, `tenant_membership`, and
-`api_credential`. Each identity/admin transaction must set the transaction-local
+`api_credential`; migration 009 binds each credential row to its issuing tenant. Each identity/admin transaction must set the transaction-local
 `omnis.tenant_id`; authentication sets it before credential lookup. The API
 credential policy permits visibility only where its principal has a membership in
 the selected tenant. The `principal` table is a shared global identity directory
