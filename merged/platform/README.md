@@ -236,3 +236,30 @@ runtime role cannot change quota policy. Tenant members with `usage:read` can
 retrieve the current calendar-month summary from `GET /v1/tenant/usage`.
 Metering currently counts assistant requests, not provider tokens or monetary cost.
 Apply migration 013 and the runtime grants documented in `migrations/README.md`.
+
+
+## Unified tenant console
+
+The root console at `/` now includes a tenant workspace alongside the legacy
+single-token tools. Open the **Tenant** tab and provide a tenant-bound
+`omnis_live_...` credential and the matching tenant UUID. The console validates
+the credential through `GET /v1/identity/me` and uses the authenticated
+permissions to show available tenant functions.
+
+The tenant workspace provides:
+
+- Tenant identity and role/permission visibility.
+- Current-month request usage and configured monthly quota.
+- Tenant audit event listing and hash-chain verification (when permitted).
+- Tenant decision-rule listing, creation, and deletion (when permitted).
+- Tenant assistant conversation creation, history retrieval, and messaging.
+
+Assistant conversation history is retrieved from the tenant-scoped PostgreSQL
+store; the browser does not inject or persist conversation history. Credentials
+are held in page memory only and are cleared when **Disconnect** is selected or
+the page is reloaded. Do not paste tenant credentials into the legacy global API
+token field. The tenant console calls only explicitly tenant-aware API routes.
+
+`GET /v1/tenant/assistant/conversations/{conversation_id}` returns one tenant's
+conversation metadata and up to 100 stored messages, subject to the authenticated
+tenant membership and `assistant:use` permission.
