@@ -272,8 +272,8 @@ def test_tenant_admin_routes_require_membership_management(monkeypatch):
             self.added = None
         def list_members(self, tenant_id):
             return [{"tenant_id": tenant_id, "principal_id": owner.principal_id}]
-        def add_member(self, tenant_id, email, display_name, role, actor_id, audit):
-            self.added = (tenant_id, email, role, actor_id)
+        def add_member(self, tenant_id, email, display_name, role, actor_id, actor_role, audit):
+            self.added = (tenant_id, email, role, actor_id, actor_role)
             return {"tenant_id": tenant_id, "email": email, "role": role}
 
     store = AdminStore()
@@ -288,7 +288,7 @@ def test_tenant_admin_routes_require_membership_management(monkeypatch):
         "email": "new@example.test", "display_name": "New Member", "role": "reader",
     })
     assert created.status_code == 200
-    assert store.added == (tenant, "new@example.test", "reader", owner.principal_id)
+    assert store.added == (tenant, "new@example.test", "reader", owner.principal_id, "owner")
 
     current["principal"] = reader
     denied = client.get("/v1/tenant/members", headers=headers)
