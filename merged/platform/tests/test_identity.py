@@ -450,3 +450,65 @@ def test_tenant_audit_api_and_governance_use_tenant_chain(monkeypatch):
     assert verified.status_code == 200
     assert verified.json()["valid"] is True
     assert all(event["payload"].get("tenant_id") == tenant for event in tenant_log.events)
+
+def test_tenant_credential_inventory_is_permission_gated_and_never_returns_tokens(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api
+    from omnis.audit import AuditLog
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    owner = Principal(tenant, "1a2b3c4d-5e6f-4789-8abc-123456789abc",
+                      "owner@example.test", "Owner", "owner", TOKEN[:32])
+    reader = Principal(tenant, "2a2b3c4d-5e6f-4789-8abc-123456789abc",
+                       "reader@example.test", "Reader", "reader", TOKEN[:32])
+
+    class AdminStore:
+        def list_credentials(self, tenant_id):
+            assert tenant_id == tenant
+            return [{"credential_id": "3a2b3c4d-5e6f-4789-8abc-123456789abc",
+                     "principal_id": owner.principal_id, "email": owner.email,
+                     "label": "console", "expires_at": "2027-01-01T00:00:00Z",
+                     "revoked_at": None, "created_at": "2026-11-23T00:00:00Z"}]
+
+    current = {"principal": owner}
+    monkeypatch.setattr(api, "tenant_admin", AdminStore())
+    monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: current["principal"])
+    client = TestClient(api.app)
+    headers = {"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant}
+
+    listed = client.get("/v1/tenant/credentials", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["credentials"][0]["label"] == "console"
+    assert "api_token_once" not in listed.text
+    assert "token_digest" not in listed.text
+
+    current["principal"] = reader
+    denied = client.get("/v1/tenant/credentials", headers=headers)
+    assert denied.status_code == 403
+
+
+def test_credential_revocation_uses_tenant_audit_log(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api
+    from omnis.audit import AuditLog
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    owner = Principal(tenant, "1a2b3c4d-5e6f-4789-8abc-123456789abc",
+                      "owner@example.test", "Owner", "owner", TOKEN[:32])
+
+    class AdminStore:
+        def revoke_credential(self, tenant_id, credential_id, actor_id, actor_role, audit_log):
+            assert audit_log is tenant_log
+            return {"tenant_id": tenant_id, "credential_id": credential_id, "revoked": True}
+
+    tenant_log = object()
+    monkeypatch.setattr(api, "tenant_admin", AdminStore())
+    monkeypatch.setattr(api, "tenant_audit", tenant_log)
+    monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: owner)
+    response = TestClient(api.app).delete(
+        "/v1/tenant/credentials/3a2b3c4d-5e6f-4789-8abc-123456789abc",
+        headers={"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant},
+    )
+    assert response.status_code == 200
