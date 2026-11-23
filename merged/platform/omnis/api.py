@@ -416,7 +416,7 @@ def issue_tenant_credential(body: TenantCredentialIn,
     try:
         return _tenant_admin_store().issue_credential(
             principal.tenant_id, body.principal_id, body.label, body.expires_in_days,
-            principal.principal_id, audit,
+            principal.principal_id, principal.role, audit,
         )
     except TenantAdminError as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -431,7 +431,7 @@ def revoke_tenant_credential(credential_id: str,
         raise HTTPException(403, "tenant role lacks credentials:manage")
     try:
         return _tenant_admin_store().revoke_credential(
-            principal.tenant_id, credential_id, principal.principal_id, audit
+            principal.tenant_id, credential_id, principal.principal_id, principal.role, audit
         )
     except TenantAdminError as exc:
         raise HTTPException(404, str(exc)) from exc
