@@ -502,7 +502,10 @@ def test_credential_revocation_uses_tenant_audit_log(monkeypatch):
             assert audit_log is tenant_log
             return {"tenant_id": tenant_id, "credential_id": credential_id, "revoked": True}
 
-    tenant_log = object()
+    class TenantAudit:
+        def record(self, *args, **kwargs):
+            return None
+    tenant_log = TenantAudit()
     monkeypatch.setattr(api, "tenant_admin", AdminStore())
     monkeypatch.setattr(api, "tenant_audit", tenant_log)
     monkeypatch.setattr(api, "audit", AuditLog())
