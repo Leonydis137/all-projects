@@ -244,3 +244,33 @@ def test_tenant_usage_summary_is_available_to_reader(monkeypatch):
     assert response.status_code == 200
     assert response.json()["period"] == "calendar_month"
     assert response.json()["unlimited_if_no_limit"] is True
+
+
+
+def test_tenant_member_can_read_conversation_history(monkeypatch):
+    client, _, _, store = _client()
+    store.conversations[CONVERSATION_ID] = {
+        "conversation_id": CONVERSATION_ID, "title": "History view",
+        "message_count": 2, "created_at": "2026-11-23T00:00:00+00:00",
+        "updated_at": "2026-11-23T00:00:00+00:00",
+    }
+    store.history_messages[CONVERSATION_ID] = [
+        {"role": "user", "content": "Earlier question"},
+        {"role": "assistant", "content": "Earlier answer"},
+    ]
+    response = client.get(
+        f"/v1/tenant/assistant/conversations/{CONVERSATION_ID}",
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert response.json()["conversation"]["title"] == "History view"
+    assert response.json()["messages"] == store.history_messages[CONVERSATION_ID]
+
+
+def test_conversation_history_from_another_tenant_is_not_found(monkeypatch):
+    client, _, _, _ = _client()
+    response = client.get(
+        "/v1/tenant/assistant/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        headers=_headers(),
+    )
+    assert response.status_code == 404
