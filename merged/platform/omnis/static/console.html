@@ -67,6 +67,15 @@ B conv <input id="cb" value="70" size="5"> / n <input id="nb" value="1000" size=
     <p id="tenant_status">Not connected. Tenant credentials are never saved by this console.</p>
     <div id="tenant_identity"></div>
   </div>
+  <div class="tenant-panel" id="tenant_admin_dashboard" hidden>
+    <div class="row" style="justify-content:space-between"><h3>ADMINISTRATION OVERVIEW</h3><button id="tenant_overview_refresh">Refresh overview</button></div>
+    <div class="tenant-layout">
+      <div class="tenant-panel"><span class="tag">TENANT</span><h3 id="tenant_overview_name">—</h3><p id="tenant_overview_slug"></p><p id="tenant_overview_state"></p></div>
+      <div class="tenant-panel"><span class="tag">MEMBERS</span><h3 id="tenant_overview_members">—</h3><p id="tenant_overview_owners"></p></div>
+      <div class="tenant-panel"><span class="tag">CREDENTIALS</span><h3 id="tenant_overview_credentials">—</h3><p>Active credentials only; revoked and expired credentials are excluded from the active count.</p></div>
+    </div>
+    <h3>ONBOARDING CHECKLIST</h3><div id="tenant_onboarding_checklist" class="tenant-list"></div>
+  </div>
   <div class="tenant-layout" id="tenant_admin_workspace" hidden>
     <div class="tenant-panel"><h3>MEMBERSHIP ADMINISTRATION</h3>
       <button id="tenant_members_refresh">Refresh members</button><div id="tenant_members" class="tenant-list"></div>
@@ -154,7 +163,7 @@ function disconnectTenant(){
   tenantEl('token').value='';tenantEl('id').value='';tenantEl('identity').textContent='';tenantEl('credential_once').textContent='';tenantEl('credential_once').hidden=true;
   tenantEl('conversations').replaceChildren();tenantEl('messages').replaceChildren();
   tenantEl('members').replaceChildren();tenantEl('credentials').replaceChildren();
-  tenantEl('admin_workspace').hidden=true;tenantEl('member_editor').hidden=true;tenantEl('credential_editor').hidden=true;
+  tenantEl('admin_dashboard').hidden=true;tenantEl('admin_workspace').hidden=true;tenantEl('member_editor').hidden=true;tenantEl('credential_editor').hidden=true;
   ['usage','audit','evidence','operations','chat_status','credential_once'].forEach(id=>{tenantEl(id).textContent='';});
   tenantEl('credential_once').hidden=true;tenantEl('rules').replaceChildren();
   tenantStatus('Disconnected. Tenant credentials and displayed tenant data cleared from this page session.');
@@ -169,6 +178,29 @@ async function refreshTenantWorkspace(){
   tenantEl('credential_editor').hidden=!canCredentials;
   if(canMembers)await loadTenantMembers();
   if(canCredentials)await loadTenantCredentials();
+  const canAdmin=tenantSession.permissions.includes('tenant:manage');
+  tenantEl('admin_dashboard').hidden=!canAdmin;
+  if(canAdmin)await loadTenantAdminOverview();
+}
+async function loadTenantAdminOverview(){
+  try{
+    const data=await tenantRequest('/v1/tenant/admin/overview'),o=data.overview;
+    tenantEl('overview_name').textContent=o.display_name;
+    tenantEl('overview_slug').textContent='Slug: '+o.slug+' · Created: '+o.created_at;
+    tenantEl('overview_state').textContent='Status: '+o.status;
+    tenantEl('overview_members').textContent=o.active_member_count+' active / '+o.member_count+' total';
+    tenantEl('overview_owners').textContent=o.active_owner_count+' active owner(s)';
+    tenantEl('overview_credentials').textContent=o.active_credential_count+' active / '+o.credential_count+' total';
+    const steps=[
+      ['Tenant active',o.status==='active','Tenant status must be active before members can authenticate.'],
+      ['Owner access protected',o.active_owner_count>0,'Keep at least one active owner; the API prevents removal of the last active owner.'],
+      ['Team membership established',o.active_member_count>1,'Add team members with the minimum role they need.'],
+      ['Tenant credential issued',o.active_credential_count>0,'Issue a time-limited credential to each active member and store it in a secret manager.'],
+      ['Credential hygiene',true,'Review expiry and revoke credentials immediately when access is no longer required.']
+    ];
+    const host=tenantEl('onboarding_checklist');host.replaceChildren();
+    for(const [label,done,detail] of steps){const row=tenantNode('div','tenant-message');row.append(tenantNode('strong',done?'ok':'', (done?'✓ ':'○ ')+label));row.append(tenantNode('small','',detail));host.append(row)}
+  }catch(e){tenantStatus('Administration overview: '+e.message,true)}
 }
 async function loadTenantMembers(){
   const host=tenantEl('members');host.replaceChildren();
@@ -288,6 +320,7 @@ async function sendTenantMessage(){
   }catch(e){tenantPre('chat_status',e.message);tenantEl('chat').value=message}
   finally{tenantEl('send').disabled=false}
 }
+tenantEl('overview_refresh').addEventListener('click',loadTenantAdminOverview);
 tenantEl('members_refresh').addEventListener('click',loadTenantMembers);
 tenantEl('member_add').addEventListener('click',addTenantMember);
 tenantEl('credentials_refresh').addEventListener('click',loadTenantCredentials);
