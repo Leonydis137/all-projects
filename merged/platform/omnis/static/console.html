@@ -203,7 +203,7 @@ async function loadTenantCredentials(){
     for(const credential of (data.credentials||[])){
       const row=tenantNode('div','tenant-message');
       row.append(tenantNode('strong','',credential.label+' · '+credential.email));
-      row.append(tenantNode('small','',credential.credential_id+' · '+credential.token_prefix+' · expires '+credential.expires_at+' · '+(credential.revoked_at?'revoked':'active')));
+      row.append(tenantNode('small','',credential.credential_id+' · created '+credential.created_at+' · expires '+credential.expires_at+' · '+(credential.revoked_at?'revoked':'active')));
       if(!credential.revoked_at){const revoke=tenantNode('button','','Revoke');revoke.type='button';
         revoke.addEventListener('click',async()=>{if(!confirm('Revoke this credential immediately?'))return;try{await tenantRequest('/v1/tenant/credentials/'+encodeURIComponent(credential.credential_id),'DELETE');tenantStatus('Credential revoked.');await loadTenantCredentials()}catch(e){tenantStatus(e.message,true)}});row.append(revoke)}
       host.append(row);
