@@ -158,7 +158,7 @@ credentials using tenant credentials:
 - `POST /v1/tenant/credentials` — issue a credential for an active member.
 - `DELETE /v1/tenant/credentials/{credential_id}` — revoke a credential.
 
-Only owners may assign the owner role or modify an existing owner's membership.
+Only owners may assign the owner role, modify an existing owner's membership, or issue/revoke another owner's credentials.
 The database transaction serializes membership changes and prevents demoting or
 suspending the last active owner. New credentials expire after 1-365 days (90 by
 default), are bound to one tenant, stored only as keyed digests, and returned once to the issuer. Suspending a membership revokes all active credentials for that tenant membership; reactivation requires a newly issued token.
