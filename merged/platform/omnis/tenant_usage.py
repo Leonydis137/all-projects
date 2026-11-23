@@ -100,17 +100,18 @@ class TenantUsageStore:
                          "outcome": outcome, "monthly_accepted": used + (outcome == "accepted"),
                          "minute_requests": minute_count + 1},
                         actor=principal)
-                    if outcome != "accepted":
-                        raise TenantUsageError(outcome)
-                    return {
+                    result = {
                         "usage_id": str(event["usage_id"]),
                         "operation": operation,
                         "units": 1,
                         "outcome": outcome,
-                        "monthly_accepted": used + 1,
+                        "monthly_accepted": used + (1 if outcome == "accepted" else 0),
                         "minute_requests": minute_count + 1,
                         "occurred_at": event["occurred_at"].isoformat(),
                     }
+            if outcome != "accepted":
+                raise TenantUsageError(outcome)
+            return result
         except TenantUsageError:
             raise
         except Exception as exc:
