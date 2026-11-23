@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import express from "express";
 import path from "path";
 import os from "os";
@@ -7,6 +7,7 @@ import { Server } from "socket.io";
 import { createServer as createViteServer } from "vite";
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { GoogleGenAI } from "@google/genai";
+import { resolveSafeSystemCommand } from "./server/safe-command";
 import { topologyEngine } from "./src/lib/TopologyEngine";
 
 const QDRANT_URL = process.env.QDRANT_URL || 'http://localhost:6333';
@@ -31,7 +32,7 @@ async function startServer() {
 
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ inflate: false, limit: "1mb" }));
 
   // simple request logging
   app.use((req, res, next) => {
@@ -244,37 +245,44 @@ async function startServer() {
     res.json(securityIncidents);
   });
 
-  // Terminal API
-  app.post("/api/cmd", async (req, res) => {
-    const { command } = req.body;
+  // Terminal API. Commands are exact allow-list entries and are executed
+  // without a shell; never pass request text to a shell interpreter.
+  app.post("/api/cmd", (req, res) => {
+    const command = typeof req.body?.command === "string"
+      ? req.body.command.trim().toLowerCase()
+      : "";
+
     if (!command) {
-      return res.status(400).json({ output: "Empty command." });
+      return res.status(400).json({ output: "A command is required." });
     }
-    
-    // Whitelist safe real commands and combine with system commands
-    const c = command.toLowerCase().trim();
-    if (['ping', 'help', 'flush', 'status'].includes(c)) {
-      switch (c) {
-        case 'ping': return res.json({ output: "pong" });
-        case 'status': return res.json({ output: "Kernel is operating nominally. All subsystems green." });
-        case 'flush': return res.json({ output: "Buffer cleared successfully." });
-        case 'help': return res.json({ output: "Safe commands: ping, status, flush, help, uptime, date, whoami, uname -a, free -m, ps aux" });
-      }
-    } else {
-      // Execute the safe OS commands
-      const safeOSCommands = ['uptime', 'date', 'whoami', 'uname -a', 'free -m', 'ps aux'];
-      if (safeOSCommands.some(cmd => command.trim().startsWith(cmd))) {
-         exec(command, (error, stdout, stderr) => {
-             if (error) {
-                 return res.json({ output: `Error: ${stderr || error.message}` });
-             }
-             return res.json({ output: stdout });
-         });
-         return; // async handling
-      } else {
-        return res.json({ output: `Command not recognized or unauthorized: ${command}` });
-      }
+
+    switch (command) {
+      case "ping":
+        return res.json({ output: "pong" });
+      case "status":
+        return res.json({ output: "Kernel is operating nominally. All subsystems green." });
+      case "flush":
+        return res.json({ output: "Buffer cleared successfully." });
+      case "help":
+        return res.json({ output: "Safe commands: ping, status, flush, help, uptime, date, whoami, uname -a, free -m, ps aux" });
     }
+
+    const selected = resolveSafeSystemCommand(command);
+    if (!selected) {
+      return res.status(400).json({ output: "Command not recognized or unauthorized." });
+    }
+
+    execFile(
+      selected.executable,
+      selected.args,
+      { encoding: "utf8", timeout: 5000, maxBuffer: 64 * 1024, windowsHide: true },
+      (error, stdout) => {
+        if (error) {
+          return res.status(500).json({ output: "The requested system command failed." });
+        }
+        return res.json({ output: stdout });
+      },
+    );
   });
 
   // Config API
