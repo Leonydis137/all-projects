@@ -40,6 +40,14 @@ ALTER TABLE omnis.tenant_audit_event FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_audit_event_scope ON omnis.tenant_audit_event;
 CREATE POLICY tenant_audit_event_scope ON omnis.tenant_audit_event
     USING (tenant_id = nullif(current_setting('omnis.tenant_id', true), '')::uuid)
-    WITH CHECK (tenant_id = nullif(current_setting('omnis.tenant_id', true), '')::uuid);
+    WITH CHECK (
+        tenant_id = nullif(current_setting('omnis.tenant_id', true), '')::uuid
+        AND EXISTS (
+            SELECT 1 FROM omnis.tenant_membership m
+            WHERE m.tenant_id = tenant_audit_event.tenant_id
+              AND m.principal_id = tenant_audit_event.actor
+              AND m.status = 'active'
+        )
+    );
 
 REVOKE ALL ON omnis.tenant_audit_event FROM PUBLIC;
