@@ -178,11 +178,12 @@ routes. Each route requires `governance:execute`, evaluates the action through
 COVENANT, and records the authenticated principal and decision in that tenant's
 audit chain:
 
-- `POST /v1/tenant/decide` — run the shared read-only decision rules; the supplied
-  decision context is passed into COVENANT evaluation.
+- `POST /v1/tenant/decide` — run a fresh default decision engine per request; the
+  supplied decision context is passed into COVENANT evaluation.
 - `POST /v1/tenant/recommend` — fit and query an in-request recommender without
   persisting tenant data or shared model state.
-- `POST /v1/tenant/protocols/respond` — generate an AEON protocol response.
+- `POST /v1/tenant/protocols/respond` — generate an AEON response from a fresh
+  per-request protocol engine, isolated from legacy feedback mutations.
 - `POST /v1/tenant/stats/ab` and `POST /v1/tenant/stats/posterior` — run statistical
   analysis with the same input validation as the legacy endpoints.
 - `POST /v1/tenant/math/gcd-lcm` — run the stateless number-theory helper.
