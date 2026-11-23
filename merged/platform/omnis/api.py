@@ -617,6 +617,8 @@ async def send_tenant_assistant_message(
     principal: Principal = Depends(tenant_identity),
 ) -> dict:
     _require_tenant_assistant(principal)
+    if not body.message.strip():
+        raise HTTPException(422, "message must contain non-whitespace text")
     try:
         store = _tenant_assistant_store()
         metadata, history = store.history(
@@ -632,7 +634,7 @@ async def send_tenant_assistant_message(
             body.message, reply, metadata["message_count"], tenant_audit or audit)
         return {"conversation": updated, "reply": reply}
     except TenantConversationError as exc:
-        status = 404 if "not found" in str(exc) else 409
+        status = 404 if "not found" in str(exc) else (422 if "must be a UUID" in str(exc) else 409)
         raise HTTPException(status, str(exc)) from exc
     except TenantConversationUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
