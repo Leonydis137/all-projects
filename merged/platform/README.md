@@ -31,7 +31,7 @@ uvicorn omnis.api:app --host 127.0.0.1 --port 8080
 
 Set `OMNIS_API_TOKEN` to protect API routes. Without `OMNIS_DATABASE_URL`, OMNIS uses
 the persistent SQLite database selected by `OMNIS_EVIDENCE_DB`. To use PostgreSQL,
-apply migrations 001 through 011 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
+apply migrations 001 through 013 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
 DSN for a dedicated runtime role with schema USAGE and SELECT/INSERT privileges only.
 Remote connections require certificate and hostname verification (`sslmode=verify-full`);
 configure the provider CA as the libpq root certificate. The runtime never runs schema
@@ -220,3 +220,19 @@ history is not accepted. Every conversation and exchange is attributed to the
 authenticated principal and tenant audit chain. The provider call uses the configured
 OMNIS Anthropic account key; tenant data is isolated in storage and request context,
 but provider billing and credentials remain platform-managed. Message content is sent to the configured Anthropic API for generation; apply the provider's data-processing and retention terms to tenant deployments.
+
+
+## Tenant usage metering and limits
+
+Tenant assistant message submissions are metered as one request unit and recorded
+before provider execution in a tenant-isolated PostgreSQL usage ledger. A rolling
+per-tenant minute counter enforces the configurable `OMNIS_TENANT_ASSISTANT_RPM`
+limit (30 requests/minute by default). Rejected attempts are retained as usage events
+and return HTTP 429 without calling the assistant provider.
+
+Monthly request quotas are configured per tenant by a database owner through
+`omnis.tenant_usage_policy`; an absent policy or NULL limit is unlimited. The
+runtime role cannot change quota policy. Tenant members with `usage:read` can
+retrieve the current calendar-month summary from `GET /v1/tenant/usage`.
+Metering currently counts assistant requests, not provider tokens or monetary cost.
+Apply migration 013 and the runtime grants documented in `migrations/README.md`.
