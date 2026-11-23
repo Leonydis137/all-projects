@@ -48,7 +48,7 @@ class TenantDecisionRuleStore:
         priority = rule.get("priority", 0)
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 120:
             raise TenantRuleError("name must contain 1-120 characters")
-        if not isinstance(field, str) or not __import__("re").fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,127}", field):
+        if not isinstance(field, str) or not __import__("re").fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,127}", field):
             raise TenantRuleError("field must be a safe dotted identifier")
         if op not in OPS:
             raise TenantRuleError(f"op must be one of {sorted(OPS)}")
