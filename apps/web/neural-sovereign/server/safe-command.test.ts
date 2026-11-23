@@ -18,6 +18,9 @@ test("rejects shell operators, substitutions, redirects, and appended commands",
     "whoami > /tmp/out",
     "ps aux; curl attacker.invalid",
     "uname -a -r",
+    "constructor",
+    "toString",
+    "__proto__",
   ]) {
     assert.equal(resolveSafeSystemCommand(input), null, input);
   }
