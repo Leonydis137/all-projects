@@ -94,6 +94,7 @@ def authenticate_api_key(
     try:
         with _connect(database_url, connect_factory) as db:
             with db.cursor() as cur:
+                cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (selected_tenant,))
                 cur.execute(
                     """SELECT t.tenant_id, p.principal_id, p.email, p.display_name,
                               m.role, c.token_prefix
