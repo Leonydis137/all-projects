@@ -85,7 +85,7 @@ class TenantAdminStore:
         with self._connect() as db:
             with db.cursor() as cur:
                 self._lock_tenant(cur, tenant)
-                cur.execute("SELECT principal_id, status FROM omnis.principal WHERE email = %s FOR UPDATE", (email,))
+                cur.execute("SELECT principal_id, status, display_name FROM omnis.principal WHERE email = %s FOR UPDATE", (email,))
                 principal = cur.fetchone()
                 if principal is None:
                     cur.execute(
@@ -97,6 +97,7 @@ class TenantAdminStore:
                     principal_id = str(principal["principal_id"])
                     if principal["status"] != "active":
                         raise TenantAdminError("principal is disabled")
+                    display_name = principal["display_name"]
                 cur.execute(
                     """INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status)
                        VALUES (%s, %s, %s, 'active')
