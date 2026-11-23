@@ -445,13 +445,16 @@ def test_tenant_audit_chains_are_isolated_and_append_only(postgres_dsn):
     assert [event["payload"]["resource"] for event in audit.list(tenant_a)] == ["alpha", "beta"]
     assert [event["payload"]["resource"] for event in audit.list(tenant_b)] == ["other"]
 
-    with psycopg.connect(postgres_dsn) as db:
-        flags = db.execute(
+    flags_connection = psycopg.connect(postgres_dsn)
+    with flags_connection:
+        flags = flags_connection.execute(
             """SELECT relrowsecurity, relforcerowsecurity
                FROM pg_class WHERE oid = 'omnis.tenant_audit_event'::regclass"""
         ).fetchone()
         assert flags == (True, True)
-        with pytest.raises(psycopg.Error):
+    flags_connection.close()
+    with pytest.raises(psycopg.Error):
+        with psycopg.connect(postgres_dsn) as db:
             db.execute(
                 "UPDATE omnis.tenant_audit_event SET event_type = 'tampered' WHERE tenant_id = %s AND event_index = 0",
                 (tenant_a,),
