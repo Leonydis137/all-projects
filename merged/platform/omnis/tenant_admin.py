@@ -56,6 +56,34 @@ class TenantAdminStore:
         if not row or row["status"] != "active":
             raise TenantAdminError("tenant is unavailable")
 
+    def overview(self, tenant_id: str) -> dict[str, Any]:
+        """Return a compact tenant-scoped administration overview."""
+        tenant = self._uuid(tenant_id)
+        with self._connect() as db:
+            with db.cursor() as cur:
+                cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant,))
+                cur.execute(
+                    """SELECT t.tenant_id, t.slug, t.display_name, t.status, t.created_at,
+                              (SELECT count(*) FROM omnis.tenant_membership m
+                               JOIN omnis.principal p ON p.principal_id = m.principal_id
+                               WHERE m.tenant_id = t.tenant_id) AS member_count,
+                              (SELECT count(*) FROM omnis.tenant_membership m
+                               JOIN omnis.principal p ON p.principal_id = m.principal_id
+                               WHERE m.tenant_id = t.tenant_id
+                                 AND m.status = 'active' AND p.status = 'active') AS active_member_count,
+                              (SELECT count(*) FROM omnis.api_credential c
+                               WHERE c.tenant_id = t.tenant_id) AS credential_count,
+                              (SELECT count(*) FROM omnis.api_credential c
+                               WHERE c.tenant_id = t.tenant_id AND c.revoked_at IS NULL
+                                 AND (c.expires_at IS NULL OR c.expires_at > now())) AS active_credential_count
+                       FROM omnis.tenant t WHERE t.tenant_id = %s""",
+                    (tenant,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    raise TenantAdminError("tenant not found")
+                return dict(row)
+
     def list_members(self, tenant_id: str) -> list[dict[str, Any]]:
         tenant = self._uuid(tenant_id)
         with self._connect() as db:
