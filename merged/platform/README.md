@@ -110,7 +110,8 @@ out-of-band and manage key rotation as an explicit trust change.
 ## Tenant identity foundation
 
 Migrations `006_tenant_identity.sql` and `008_identity_row_security.sql` add PostgreSQL tenants, principals, active
-memberships, role assignments, revocable API credentials, and forced tenant RLS. Tenant credentials
+memberships, role assignments, revocable API credentials, and forced tenant RLS. Migration
+`009_tenant_bound_credentials.sql` binds each credential to exactly one tenant. Tenant credentials
 are high-entropy `omnis_live_...` tokens; only keyed HMAC-SHA256 digests are stored.
 Set `OMNIS_API_KEY_PEPPER` to a separate secret containing at least 32 characters.
 The authenticated identity, membership administration, credential lifecycle, tenant evidence, and tenant source acquisition routes require both a tenant credential and an explicit `X-OMNIS-Tenant` UUID header. Tenant operations are role-gated, row-level secured where supported by PostgreSQL, and audited against the authenticated principal ID.
@@ -129,7 +130,7 @@ manager immediately. Never use the provisioning DSN as the runtime database URL.
 
 ## Tenant-scoped evidence API
 
-After applying migrations 006 through 008, tenant credentials can use:
+After applying migrations 006 through 009, tenant credentials can use:
 
 - `POST /v1/tenant/evidence` — append evidence as the authenticated principal.
 - `GET /v1/tenant/evidence` — list only the selected tenant's evidence.
@@ -160,7 +161,7 @@ credentials using tenant credentials:
 Only owners may assign the owner role or modify an existing owner's membership.
 The database transaction serializes membership changes and prevents demoting or
 suspending the last active owner. New credentials expire after 1-365 days (90 by
-default), are stored only as keyed digests, and are returned once to the issuer.
+default), are bound to one tenant, stored only as keyed digests, and returned once to the issuer. Suspending a membership revokes all active credentials for that tenant membership; reactivation requires a newly issued token.
 
 Tenant-aware source acquisition is available through `POST /v1/tenant/source/fetch`.
 COVENANT authorization runs before network access; the resulting signed fetch
