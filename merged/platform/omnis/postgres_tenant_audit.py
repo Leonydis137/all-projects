@@ -68,7 +68,7 @@ class PostgresTenantAuditLog:
             if (event.get("tenant_id") != tenant_id
                     or event.get("i") != row["event_index"]
                     or event.get("kind") != row["event_type"]
-                    or event.get("actor") != row["actor"]
+                    or event.get("actor") != str(row["actor"])
                     or event.get("prev") != row["previous_hash"]):
                 raise ValueError("event columns differ from canonical body")
             if not isinstance(event.get("ts"), (int, float)) or isinstance(event.get("ts"), bool):
