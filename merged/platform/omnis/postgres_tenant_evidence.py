@@ -149,9 +149,10 @@ class PostgresTenantEvidenceLedger:
                             "record_hash": existing["record_hash"],
                         }, sort_keys=True, separators=(",", ":"))
                         cur.execute(
-                            """SELECT 1 FROM omnis.audit_event
-                               WHERE event_type = 'tenant.evidence.append' AND payload = %s::jsonb LIMIT 1""",
-                            (audit_payload,),
+                            """SELECT 1 FROM omnis.tenant_audit_event
+                               WHERE tenant_id = %s AND event_type = 'tenant.evidence.append'
+                                 AND payload = %s::jsonb LIMIT 1""",
+                            (tenant, audit_payload),
                         )
                         if cur.fetchone() is None:
                             raise EvidenceIntegrityError("existing tenant evidence row has no audit event")
