@@ -77,3 +77,8 @@ The tenant source connector applies COVENANT authorization before outbound netwo
 access and appends the signed fetch observation to the selected tenant's separate
 evidence ledger. The global evidence and governance routes remain behind the legacy
 shared token until their storage and query paths are tenant-aware.
+
+API credentials are tenant-bound: the credential row carries one tenant UUID, the
+authentication query matches that tenant explicitly, and the RLS policy enforces
+the same boundary. Suspending a membership revokes its active credentials in the
+same transaction, so reactivation never silently restores old bearer tokens.
