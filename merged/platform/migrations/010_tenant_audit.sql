@@ -46,7 +46,6 @@ CREATE POLICY tenant_audit_event_scope ON omnis.tenant_audit_event
             SELECT 1 FROM omnis.tenant_membership m
             WHERE m.tenant_id = tenant_audit_event.tenant_id
               AND m.principal_id = tenant_audit_event.actor
-              AND m.status = 'active'
         )
     );
 
