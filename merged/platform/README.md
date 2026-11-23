@@ -219,4 +219,4 @@ The server loads history from the selected tenant's database rows; client-suppli
 history is not accepted. Every conversation and exchange is attributed to the
 authenticated principal and tenant audit chain. The provider call uses the configured
 OMNIS Anthropic account key; tenant data is isolated in storage and request context,
-but provider billing and credentials remain platform-managed.
+but provider billing and credentials remain platform-managed. Message content is sent to the configured Anthropic API for generation; apply the provider's data-processing and retention terms to tenant deployments.
