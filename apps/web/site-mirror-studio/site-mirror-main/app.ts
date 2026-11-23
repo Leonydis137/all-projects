@@ -13,8 +13,8 @@ app.use(helmet());
 app.use(cors());
 
 // JSON & URL‑encoded body parsers with size limits
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ inflate: false, limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, inflate: false, limit: "10mb" }));
 
 // Mirror API routes
 app.use("/mirror", mirrorRoutes);
