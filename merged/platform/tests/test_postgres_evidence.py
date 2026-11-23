@@ -389,6 +389,28 @@ def test_tenant_admin_member_lifecycle_and_credential_revocation(postgres_dsn):
         )
 
     admin.update_member(tenant, member["principal_id"], "owner", "active", owner, "owner", audit)
+    admin.update_member(tenant, member["principal_id"], "owner", "suspended", owner, "owner", audit)
+    with pytest.raises(TenantAdminError, match="only an owner may reactivate"):
+        admin.add_member(
+            tenant, "member-" + marker + "@example.test", "Tenant Member",
+            "reader", owner, "admin", audit,
+        )
+    admin.add_member(
+        tenant, "member-" + marker + "@example.test", "Tenant Member",
+        "owner", owner, "owner", audit,
+    )
+
+    admin_member = admin.add_member(
+        tenant, "admin-" + marker + "@example.test", "Tenant Admin", "admin", owner, "owner", audit
+    )
+    owner_credential = admin.issue_credential(
+        tenant, owner, "owner-credential", 30, owner, "owner", audit
+    )
+    with pytest.raises(TenantAdminError, match="only an owner may revoke"):
+        admin.revoke_credential(
+            tenant, owner_credential["credential_id"], admin_member["principal_id"], "admin", audit
+        )
+
     admin.update_member(tenant, owner, "admin", "active", owner, "owner", audit)
     assert {item["role"] for item in admin.list_members(tenant)} == {"owner", "admin"}
     assert audit.verify() is True
