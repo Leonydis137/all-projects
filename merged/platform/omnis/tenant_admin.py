@@ -75,7 +75,11 @@ class TenantAdminStore:
                                WHERE c.tenant_id = t.tenant_id) AS credential_count,
                               (SELECT count(*) FROM omnis.api_credential c
                                WHERE c.tenant_id = t.tenant_id AND c.revoked_at IS NULL
-                                 AND (c.expires_at IS NULL OR c.expires_at > now())) AS active_credential_count
+                                 AND (c.expires_at IS NULL OR c.expires_at > now())) AS active_credential_count,
+                              (SELECT count(*) FROM omnis.tenant_membership m
+                               JOIN omnis.principal p ON p.principal_id = m.principal_id
+                               WHERE m.tenant_id = t.tenant_id AND m.role = 'owner'
+                                 AND m.status = 'active' AND p.status = 'active') AS active_owner_count
                        FROM omnis.tenant t WHERE t.tenant_id = %s""",
                     (tenant,),
                 )
