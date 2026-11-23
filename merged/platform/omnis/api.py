@@ -647,7 +647,13 @@ def tenant_decide(body: DecideIn, principal: Principal = Depends(tenant_identity
                 Rule(stored["name"], stored["field"], stored["op"], stored["value"],
                      stored["action"], stored["priority"])
             )
-    return decision_engine.decide(body.context)
+    result = decision_engine.decide(body.context)
+    (tenant_audit or audit).record(
+        "tenant.decision.executed",
+        {"tenant_id": principal.tenant_id, "action": result["action"], "rule": result["rule"]},
+        actor=principal.principal_id,
+    )
+    return result
 
 @app.post("/v1/tenant/recommend")
 def tenant_recommend(body: RecommendIn, principal: Principal = Depends(tenant_identity)) -> dict:
