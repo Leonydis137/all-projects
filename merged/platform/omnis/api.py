@@ -23,6 +23,7 @@ from .postgres_tenant_audit import (
     PostgresTenantAuditLog, TenantAuditIntegrityError, TenantAuditValidationError,
 )
 from .tenant_admin import TenantAdminError, TenantAdminStore, TenantAdminUnavailable
+from .tenant_decision_rules import TenantDecisionRuleStore, TenantRuleError, TenantRuleUnavailable
 from .protocols import AEON, Context
 from .recommend import Recommender
 from .identity import IdentityUnavailable, InvalidCredential, Principal, authenticate_api_key
@@ -45,6 +46,7 @@ evidence = (PostgresEvidenceLedger(config.DATABASE_URL, audit_log=audit) if conf
 tenant_evidence = PostgresTenantEvidenceLedger(config.DATABASE_URL) if config.DATABASE_URL else None
 tenant_audit = PostgresTenantAuditLog(config.DATABASE_URL) if config.DATABASE_URL else None
 tenant_admin = (TenantAdminStore(config.DATABASE_URL, os.environ.get('OMNIS_API_KEY_PEPPER', '')) if config.DATABASE_URL and len(os.environ.get('OMNIS_API_KEY_PEPPER', '')) >= 32 else None)
+tenant_decision_rules = TenantDecisionRuleStore(config.DATABASE_URL) if config.DATABASE_URL else None
 STATIC = Path(__file__).parent / "static"
 _HEALTH_CACHE_TTL_SECONDS = 2.0
 _health_lock = threading.Lock()
@@ -84,8 +86,9 @@ async def audit_api_requests(request: Request, call_next):
         "/v1/tenant/stats/ab",
         "/v1/tenant/stats/posterior",
         "/v1/tenant/math/gcd-lcm",
+        "/v1/tenant/decision-rules",
     }
-    if path.startswith("/v1/tenant/members/") or path.startswith("/v1/tenant/credentials/"):
+    if path.startswith("/v1/tenant/decision-rules/") or path.startswith("/v1/tenant/members/") or path.startswith("/v1/tenant/credentials/"):
         tenant_auth_paths.add(path)
     if path in tenant_auth_paths:
         authorization = request.headers.get("authorization", "")
@@ -565,7 +568,7 @@ def _tenant_operation(
 @app.post("/v1/tenant/decide")
 def tenant_decide(body: DecideIn, principal: Principal = Depends(tenant_identity)) -> dict:
     _tenant_operation(principal, "tenant.decision", body.attributes, body.context)
-    return default_engine().decide(body.context)
+    decision_engine = default_engine()\n    if tenant_decision_rules is not None:\n        for stored in tenant_decision_rules.list_rules(principal.tenant_id):\n            decision_engine.add_rule(Rule(stored["name"], stored["field"], stored["op"],\n                                          stored["value"], stored["action"], stored["priority"]))\n    return decision_engine.decide(body.context)
 
 
 @app.post("/v1/tenant/recommend")
