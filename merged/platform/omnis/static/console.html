@@ -122,9 +122,10 @@ function tenantNode(tag,cls,txt){const n=document.createElement(tag);if(cls)n.cl
 async function connectTenant(){
   const token=tenantEl('token').value.trim(),tenant=tenantEl('id').value.trim();
   if(!token||!tenant){tenantStatus('Both tenant credential and tenant UUID are required.',true);return}
-  tenantSession={token,tenant};selectedTenantConversation=null;
+  tenantSession={token,tenant,permissions:[]};selectedTenantConversation=null;
   try{
     const me=await tenantRequest('/v1/identity/me');
+    tenantSession.permissions=me.permissions||[];
     tenantEl('identity').textContent=me.display_name+' · '+me.email+' · '+me.role+' · '+me.tenant_id;
     tenantStatus('Authenticated · '+me.permissions.join(', '));
     await refreshTenantWorkspace();
