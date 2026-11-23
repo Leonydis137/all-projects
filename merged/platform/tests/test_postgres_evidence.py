@@ -415,8 +415,7 @@ def test_tenant_admin_member_lifecycle_and_credential_revocation(postgres_dsn):
 
     admin.update_member(tenant, owner, "admin", "active", owner, "owner", audit)
     assert {item["role"] for item in admin.list_members(tenant)} == {"owner", "admin"}
-    assert audit.verify(tenant_a)["valid"] is True
-    assert audit.verify(tenant_b)["valid"] is True
+    assert audit.verify(tenant)["valid"] is True
 
 
 def test_tenant_audit_chains_are_isolated_and_append_only(postgres_dsn):
