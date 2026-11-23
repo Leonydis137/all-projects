@@ -277,7 +277,15 @@ class TenantMemberUpdateIn(BaseModel):
     status: str = "active"
 
 
-class TenantAssistantConversationIn(BaseModel):\n    title: str = Field(default="New conversation", min_length=1, max_length=160)\n\n\nclass TenantAssistantMessageIn(BaseModel):\n    message: str = Field(min_length=1, max_length=12000)\n\n\nclass TenantDecisionRuleIn(BaseModel):
+class TenantAssistantConversationIn(BaseModel):
+    title: str = Field(default="New conversation", min_length=1, max_length=160)
+
+
+class TenantAssistantMessageIn(BaseModel):
+    message: str = Field(min_length=1, max_length=12000)
+
+
+class TenantDecisionRuleIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     field: str = Field(min_length=1, max_length=128)
     op: str
