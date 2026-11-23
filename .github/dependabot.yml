@@ -1,0 +1,77 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 20
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /apps/web/vantage-ars
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 20
+    groups:
+      production-dependencies:
+        dependency-type: production
+        update-types: ["patch", "minor"]
+      development-dependencies:
+        dependency-type: development
+        update-types: ["patch", "minor"]
+
+  - package-ecosystem: npm
+    directory: /apps/web/codeevolve-ai
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 20
+
+  - package-ecosystem: npm
+    directory: /apps/web/neural-sovereign
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 20
+
+  - package-ecosystem: npm
+    directory: /apps/web/quantum-flow-os
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 20
+
+  - package-ecosystem: npm
+    directory: /apps/web/project-genesis
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 20
+
+  - package-ecosystem: npm
+    directory: /apps/web/site-mirror-studio
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 20
+
+  - package-ecosystem: npm
+    directory: /apps/web/vantage-ars/workspace-v2
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 20
+
+  - package-ecosystem: pip
+    directory: /services/covenant/backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 20
+
+  - package-ecosystem: pip
+    directory: /merged/platform
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 20
+
+  - package-ecosystem: docker
+    directory: /merged/platform
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
