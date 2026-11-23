@@ -31,6 +31,7 @@ def postgres_dsn():
         db.execute((migration_dir / "007_tenant_evidence.sql").read_text(encoding="utf-8"))
         db.execute((migration_dir / "008_identity_row_security.sql").read_text(encoding="utf-8"))
         db.execute((migration_dir / "009_tenant_bound_credentials.sql").read_text(encoding="utf-8"))
+        db.execute((migration_dir / "010_tenant_audit.sql").read_text(encoding="utf-8"))
     return DSN
 
 
@@ -269,13 +270,13 @@ def _create_tenant_owner(dsn: str, marker: str) -> tuple[str, str]:
 
 
 def test_tenant_evidence_isolation_idempotency_and_audit(postgres_dsn):
-    from omnis.postgres_audit import PostgresAuditLog
+    from omnis.postgres_tenant_audit import PostgresTenantAuditLog
     from omnis.postgres_tenant_evidence import PostgresTenantEvidenceLedger
 
     marker = uuid4().hex
     tenant_a, actor_a = _create_tenant_owner(postgres_dsn, "a" + marker)
     tenant_b, actor_b = _create_tenant_owner(postgres_dsn, "b" + marker)
-    audit = PostgresAuditLog(postgres_dsn)
+    audit = PostgresTenantAuditLog(postgres_dsn)
     ledger = PostgresTenantEvidenceLedger(postgres_dsn)
     key = "tenant-retry-" + marker
 
@@ -300,7 +301,8 @@ def test_tenant_evidence_isolation_idempotency_and_audit(postgres_dsn):
     assert len(ledger.list(tenant_b)) == 1
     assert ledger.verify(tenant_a)["valid"] is True
     assert ledger.verify(tenant_b)["valid"] is True
-    assert audit.verify() is True
+    assert audit.verify(tenant_a)["valid"] is True
+    assert audit.verify(tenant_b)["valid"] is True
 
 
 def test_tenant_evidence_table_enforces_rls_and_immutability(postgres_dsn):
@@ -344,13 +346,13 @@ def test_tenant_evidence_table_enforces_rls_and_immutability(postgres_dsn):
 
 def test_tenant_admin_member_lifecycle_and_credential_revocation(postgres_dsn):
     from omnis.identity import InvalidCredential, authenticate_api_key
-    from omnis.postgres_audit import PostgresAuditLog
+    from omnis.postgres_tenant_audit import PostgresTenantAuditLog
     from omnis.tenant_admin import TenantAdminError, TenantAdminStore
 
     marker = uuid4().hex
     tenant, owner = _create_tenant_owner(postgres_dsn, "admin-" + marker)
     pepper = "integration-test-pepper-that-is-at-least-32-characters"
-    audit = PostgresAuditLog(postgres_dsn)
+    audit = PostgresTenantAuditLog(postgres_dsn)
     admin = TenantAdminStore(postgres_dsn, pepper)
 
     with pytest.raises(TenantAdminError, match="last active tenant owner"):
@@ -413,4 +415,47 @@ def test_tenant_admin_member_lifecycle_and_credential_revocation(postgres_dsn):
 
     admin.update_member(tenant, owner, "admin", "active", owner, "owner", audit)
     assert {item["role"] for item in admin.list_members(tenant)} == {"owner", "admin"}
-    assert audit.verify() is True
+    assert audit.verify(tenant)["valid"] is True
+
+
+def test_tenant_audit_chains_are_isolated_and_append_only(postgres_dsn):
+    import psycopg
+    from omnis.postgres_tenant_audit import PostgresTenantAuditLog
+
+    marker = uuid4().hex
+    tenant_a, actor_a = _create_tenant_owner(postgres_dsn, "audit-a-" + marker)
+    tenant_b, actor_b = _create_tenant_owner(postgres_dsn, "audit-b-" + marker)
+    audit = PostgresTenantAuditLog(postgres_dsn)
+
+    first_a = audit.record("tenant.test.one", {
+        "tenant_id": tenant_a, "resource": "alpha",
+    }, actor=actor_a)
+    second_a = audit.record("tenant.test.two", {
+        "tenant_id": tenant_a, "resource": "beta",
+    }, actor=actor_a)
+    first_b = audit.record("tenant.test.one", {
+        "tenant_id": tenant_b, "resource": "other",
+    }, actor=actor_b)
+
+    assert first_a["i"] == 0
+    assert second_a["i"] == 1
+    assert first_b["i"] == 0
+    assert audit.verify(tenant_a)["valid"] is True
+    assert audit.verify(tenant_b)["valid"] is True
+    assert [event["payload"]["resource"] for event in audit.list(tenant_a)] == ["alpha", "beta"]
+    assert [event["payload"]["resource"] for event in audit.list(tenant_b)] == ["other"]
+
+    flags_connection = psycopg.connect(postgres_dsn)
+    with flags_connection:
+        flags = flags_connection.execute(
+            """SELECT relrowsecurity, relforcerowsecurity
+               FROM pg_class WHERE oid = 'omnis.tenant_audit_event'::regclass"""
+        ).fetchone()
+        assert flags == (True, True)
+    flags_connection.close()
+    with pytest.raises(psycopg.Error):
+        with psycopg.connect(postgres_dsn) as db:
+            db.execute(
+                "UPDATE omnis.tenant_audit_event SET event_type = 'tampered' WHERE tenant_id = %s AND event_index = 0",
+                (tenant_a,),
+            )

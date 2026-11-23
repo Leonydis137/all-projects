@@ -404,3 +404,49 @@ def test_tenant_source_fetch_persists_to_authenticated_tenant(monkeypatch):
     )
     assert response.status_code == 200
     assert response.json()["record"]["submitted_by"] == operator.principal_id
+
+
+def test_tenant_audit_api_and_governance_use_tenant_chain(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api
+    from omnis.audit import AuditLog
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    owner = Principal(tenant, "1a2b3c4d-5e6f-4789-8abc-123456789abc",
+                      "owner@example.test", "Owner", "owner", TOKEN[:32])
+
+    class TenantAudit:
+        def __init__(self):
+            self.events = []
+        def record(self, kind, payload, actor=None):
+            self.events.append({"kind": kind, "payload": payload, "actor": actor})
+            return self.events[-1]
+        def list(self, tenant_id, limit=100, before=None):
+            assert all(event["payload"].get("tenant_id") == tenant_id for event in self.events)
+            return self.events[-limit:]
+        def verify(self, tenant_id):
+            assert all(event["payload"].get("tenant_id") == tenant_id for event in self.events)
+            return {"valid": True, "checked": len(self.events), "head": "a" * 64}
+
+    tenant_log = TenantAudit()
+    monkeypatch.setattr(api, "tenant_audit", tenant_log)
+    monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: owner)
+    monkeypatch.setattr(api.governance, "evaluate", lambda action, context=None: {
+        "allowed": True, "violations": [], "checked": [],
+    })
+    client = TestClient(api.app)
+    headers = {"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant}
+
+    governed = client.post("/v1/tenant/govern", headers=headers,
+                           json={"action": {"type": "test.action"}, "context": {}})
+    assert governed.status_code == 200
+    assert any(event["kind"] == "governance.evaluate" for event in tenant_log.events)
+
+    listed = client.get("/v1/tenant/audit", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["events"]
+    verified = client.get("/v1/tenant/audit/verify", headers=headers)
+    assert verified.status_code == 200
+    assert verified.json()["valid"] is True
+    assert all(event["payload"].get("tenant_id") == tenant for event in tenant_log.events)

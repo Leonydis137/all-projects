@@ -75,6 +75,9 @@ async def audit_api_requests(request: Request, call_next):
         "/v1/tenant/credentials",
         "/v1/tenant/source/fetch",
         "/v1/tenant/source/attestation-key",
+        "/v1/tenant/audit",
+        "/v1/tenant/audit/verify",
+        "/v1/tenant/govern",
     }
     if path.startswith("/v1/tenant/members/") or path.startswith("/v1/tenant/credentials/"):
         tenant_auth_paths.add(path)
