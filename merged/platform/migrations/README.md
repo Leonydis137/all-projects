@@ -30,7 +30,7 @@ Migration 004 intentionally contains `CREATE INDEX CONCURRENTLY` and must not be
 
 Migration 005 wraps its constraint replacement in one transaction. If validation finds legacy rows with non-HTTP(S) URIs, the transaction rolls back and the original constraint remains in place; clean those rows before retrying.
 
-Set `OMNIS_DATABASE_URL` only after all nine migrations have completed. This switches both evidence and audit storage from their local fallback implementations to PostgreSQL. During a rolling deployment, drain old application instances before relying on the durable audit chain; older instances do not write to PostgreSQL.
+Set `OMNIS_DATABASE_URL` only after all ten migrations have completed. This switches both evidence and audit storage from their local fallback implementations to PostgreSQL. During a rolling deployment, drain old application instances before relying on the durable audit chain; older instances do not write to PostgreSQL.
 
 ## Application-role provisioning
 
@@ -56,6 +56,7 @@ GRANT SELECT, INSERT, UPDATE ON omnis.tenant_membership, omnis.api_credential TO
 GRANT SELECT, INSERT, UPDATE ON omnis.principal TO omnis_app;
 GRANT SELECT, INSERT ON omnis.tenant_evidence TO omnis_app;
 GRANT USAGE, SELECT ON SEQUENCE omnis.tenant_evidence_sequence_seq TO omnis_app;
+GRANT SELECT, INSERT ON omnis.tenant_audit_event TO omnis_app;
 ```
 
 Do not grant DELETE, TRUNCATE, ownership, schema CREATE, or BYPASSRLS. Migration
@@ -65,8 +66,11 @@ Do not grant DELETE, TRUNCATE, ownership, schema CREATE, or BYPASSRLS. Migration
 credential policy permits visibility only where its principal has a membership in
 the selected tenant. The `principal` table is a shared global identity directory
 keyed by normalized email and is intentionally not tenant-filtered at the SQL layer;
-application queries must not expose the global directory. Tenant evidence also
-uses forced RLS and the same transaction-local tenant context. The provisioning
+application queries must not expose the global directory. Tenant evidence and tenant audit events also
+use forced RLS and the same transaction-local tenant context. The tenant audit table
+has no global sequence: each tenant has its own event index and predecessor chain.
+The runtime role receives SELECT/INSERT only; UPDATE, DELETE, and TRUNCATE are blocked
+by privileges and append-only triggers. The provisioning
 command sets the tenant context before creating the tenant, membership, and initial
 credential, so a separate provisioning role does not need BYPASSRLS.
 
@@ -107,6 +111,9 @@ Tenant credentials may also use the following tenant-aware endpoints:
 - `DELETE /v1/tenant/credentials/{credential_id}` — revoke a credential in the selected tenant (credentials:manage).
 - `GET /v1/tenant/source/attestation-key` — retrieve the public fetch-attestation key.
 - `POST /v1/tenant/source/fetch` — run COVENANT authorization before controlled source acquisition and append the signed observation to the tenant evidence ledger.
+- `POST /v1/tenant/govern` — evaluate a COVENANT-governed action and record the decision in the tenant audit chain.
+- `GET /v1/tenant/audit` — list only this tenant's audit events (audit:read).
+- `GET /v1/tenant/audit/verify` — verify the complete tenant-local audit chain (audit:read).
 
 New credentials are returned once in the issuing response and must be copied to a
 secret manager. They expire after 1-365 days (90 by default). Membership operations
