@@ -100,9 +100,11 @@ def authenticate_api_key(
                               m.role, c.token_prefix
                        FROM omnis.api_credential AS c
                        JOIN omnis.principal AS p ON p.principal_id = c.principal_id
-                       JOIN omnis.tenant_membership AS m ON m.principal_id = p.principal_id
-                       JOIN omnis.tenant AS t ON t.tenant_id = m.tenant_id
+                       JOIN omnis.tenant_membership AS m
+                         ON m.principal_id = p.principal_id AND m.tenant_id = c.tenant_id
+                       JOIN omnis.tenant AS t ON t.tenant_id = c.tenant_id
                        WHERE c.token_digest = %s
+                         AND c.tenant_id = %s
                          AND t.tenant_id = %s
                          AND c.token_prefix = %s
                          AND c.revoked_at IS NULL
@@ -111,7 +113,7 @@ def authenticate_api_key(
                          AND m.status = 'active'
                          AND t.status = 'active'
                        LIMIT 1""",
-                    (token_digest, selected_tenant, token[:32]),
+                    (token_digest, selected_tenant, selected_tenant, token[:32]),
                 )
                 row = cur.fetchone()
     except IdentityUnavailable:
