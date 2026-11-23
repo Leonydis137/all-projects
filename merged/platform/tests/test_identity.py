@@ -254,3 +254,152 @@ def test_tenant_credential_cannot_access_legacy_global_routes(monkeypatch):
         headers={"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"},
     )
     assert response.status_code == 401
+
+
+def test_tenant_admin_routes_require_membership_management(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api
+    from omnis.audit import AuditLog
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    owner = Principal(tenant, "1a2b3c4d-5e6f-4789-8abc-123456789abc",
+                      "owner@example.test", "Owner", "owner", TOKEN[:32])
+    reader = Principal(tenant, "2a2b3c4d-5e6f-4789-8abc-123456789abc",
+                       "reader@example.test", "Reader", "reader", TOKEN[:32])
+
+    class AdminStore:
+        def __init__(self):
+            self.added = None
+        def list_members(self, tenant_id):
+            return [{"tenant_id": tenant_id, "principal_id": owner.principal_id}]
+        def add_member(self, tenant_id, email, display_name, role, actor_id, audit):
+            self.added = (tenant_id, email, role, actor_id)
+            return {"tenant_id": tenant_id, "email": email, "role": role}
+
+    store = AdminStore()
+    current = {"principal": owner}
+    monkeypatch.setattr(api, "tenant_admin", store)
+    monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: current["principal"])
+    client = TestClient(api.app)
+    headers = {"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant}
+
+    created = client.post("/v1/tenant/members", headers=headers, json={
+        "email": "new@example.test", "display_name": "New Member", "role": "reader",
+    })
+    assert created.status_code == 200
+    assert store.added == (tenant, "new@example.test", "reader", owner.principal_id)
+
+    current["principal"] = reader
+    denied = client.get("/v1/tenant/members", headers=headers)
+    assert denied.status_code == 403
+
+
+def test_only_owner_can_assign_owner_role(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api
+    from omnis.audit import AuditLog
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    admin = Principal(tenant, "1a2b3c4d-5e6f-4789-8abc-123456789abc",
+                      "admin@example.test", "Admin", "admin", TOKEN[:32])
+    class AdminStore:
+        def add_member(self, *args):
+            raise AssertionError("owner assignment must be rejected before storage")
+    monkeypatch.setattr(api, "tenant_admin", AdminStore())
+    monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: admin)
+    response = TestClient(api.app).post(
+        "/v1/tenant/members",
+        headers={"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant},
+        json={"email": "new@example.test", "display_name": "New Owner", "role": "owner"},
+    )
+    assert response.status_code == 403
+
+
+def test_tenant_source_fetch_is_governed_before_network(monkeypatch):
+    from fastapi import HTTPException
+    from fastapi.testclient import TestClient
+    from omnis import api
+    from omnis.audit import AuditLog
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    operator = Principal(tenant, "1a2b3c4d-5e6f-4789-8abc-123456789abc",
+                         "operator@example.test", "Operator", "operator", TOKEN[:32])
+    monkeypatch.setattr(api, "tenant_evidence", object())
+    monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: operator)
+    def deny(*args, **kwargs):
+        raise HTTPException(403, "blocked by test governance")
+    def network_must_not_run(*args, **kwargs):
+        raise AssertionError("network must not run before COVENANT authorization")
+    monkeypatch.setattr(api, "gated", deny)
+    monkeypatch.setattr(api, "acquire_and_attest", network_must_not_run)
+    response = TestClient(api.app).post(
+        "/v1/tenant/source/fetch",
+        headers={"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant},
+        json={"source_uri": "https://allowed.example.test/document", "license": "unknown"},
+    )
+    assert response.status_code == 403
+
+
+def test_owner_can_assign_second_owner(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api
+    from omnis.audit import AuditLog
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    owner = Principal(tenant, "1a2b3c4d-5e6f-4789-8abc-123456789abc",
+                      "owner@example.test", "Owner", "owner", TOKEN[:32])
+    class AdminStore:
+        def add_member(self, tenant_id, email, display_name, role, actor_id, audit):
+            assert role == "owner"
+            return {"tenant_id": tenant_id, "email": email, "role": role}
+    monkeypatch.setattr(api, "tenant_admin", AdminStore())
+    monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: owner)
+    response = TestClient(api.app).post(
+        "/v1/tenant/members",
+        headers={"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant},
+        json={"email": "second-owner@example.test", "display_name": "Second Owner", "role": "owner"},
+    )
+    assert response.status_code == 200
+    assert response.json()["member"]["role"] == "owner"
+
+
+def test_tenant_source_fetch_persists_to_authenticated_tenant(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api
+    from omnis.audit import AuditLog
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    operator = Principal(tenant, "1a2b3c4d-5e6f-4789-8abc-123456789abc",
+                         "operator@example.test", "Operator", "operator", TOKEN[:32])
+    attestation = {"statement": {"claim": "platform_observed_fetch"}, "algorithm": "Ed25519"}
+    record = {
+        "source_uri": "https://allowed.example.test/document",
+        "content_sha256": "c" * 64,
+        "acquired_at": "2026-11-23T00:00:00Z",
+        "acquisition_method": "omnis-fetch-attestation-v1",
+        "license": "unknown",
+        "submitted_by": "omnis-source-fetcher",
+        "provenance_attestation": attestation,
+    }
+    class TenantStore:
+        def append_with_audit(self, value, tenant_id, actor_id, audit):
+            assert tenant_id == operator.tenant_id
+            assert actor_id == operator.principal_id
+            assert value["provenance_attestation"] == attestation
+            return {"tenant_id": tenant_id, **value, "submitted_by": actor_id}
+    monkeypatch.setattr(api, "tenant_evidence", TenantStore())
+    monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: operator)
+    monkeypatch.setattr(api, "gated", lambda *args, **kwargs: {"allowed": True})
+    monkeypatch.setattr(api, "acquire_and_attest", lambda *args: (record, {"content_sha256": "c" * 64}))
+    response = TestClient(api.app).post(
+        "/v1/tenant/source/fetch",
+        headers={"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant},
+        json={"source_uri": "https://allowed.example.test/document", "license": "unknown"},
+    )
+    assert response.status_code == 200
+    assert response.json()["record"]["submitted_by"] == operator.principal_id
