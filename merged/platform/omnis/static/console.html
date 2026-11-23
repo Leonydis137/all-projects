@@ -14,6 +14,19 @@ h1{font-size:18px;margin:0;color:var(--neon);letter-spacing:.14em}#st{color:var(
 input,select,textarea,button{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 button{cursor:pointer;border-color:var(--neon);color:var(--neon)}button:hover{background:var(--neon);color:var(--bg)}
 nav{display:flex;gap:6px;padding:10px 20px;flex-wrap:wrap}nav button.on{background:var(--neon);color:var(--bg)}
+.tenant-layout{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:14px 0}
+.tenant-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0}
+.tenant-panel h3{margin:0 0 10px;color:var(--neon);font-size:14px;letter-spacing:.06em}
+.tenant-panel input,.tenant-panel textarea{width:100%;margin:3px 0 8px}
+.tenant-panel button{margin:3px}
+.tenant-list{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto}
+.tenant-list button{text-align:left;overflow-wrap:anywhere}
+.tenant-list button.selected{background:var(--neon);color:var(--bg)}
+#tenant_messages{display:flex;flex-direction:column;gap:8px;max-height:380px;overflow:auto;margin:10px 0}
+.tenant-message{border:1px solid var(--line);border-radius:10px;padding:9px;white-space:pre-wrap;overflow-wrap:anywhere}
+.tenant-message.user{border-color:var(--neon)}
+.tenant-message.assistant{border-color:var(--ok)}
+#tenant_chat{min-height:70px}
 main{padding:0 20px 40px;max-width:1100px;margin:auto}section{display:none}section.on{display:block}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}.card b{color:var(--neon)}
@@ -43,13 +56,43 @@ B conv <input id="cb" value="70" size="5"> / n <input id="nb" value="1000" size=
 <section id="assistant"><label>Message (governed Claude chat – needs ANTHROPIC_API_KEY on the server)</label>
 <textarea id="a_in">What can this platform do?</textarea><p><button onclick="call('/v1/assistant',{message:v('a_in')},'a_out')">Send</button></p><pre id="a_out"></pre></section>
 <section id="audit"><p><button onclick="get('/v1/audit','au_out')">Refresh</button></p><pre id="au_out"></pre></section>
+<section id="tenant">
+  <div class="tenant-panel">
+    <h3>TENANT SESSION</h3>
+    <div class="row">
+      <div style="flex:2;min-width:220px"><label>Tenant API credential (kept in memory only)</label><input id="tenant_token" type="password" autocomplete="off" placeholder="omnis_live_…"></div>
+      <div style="flex:1;min-width:220px"><label>Tenant UUID</label><input id="tenant_id" autocomplete="off" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></div>
+      <div><label>&nbsp;</label><button id="tenant_connect">Connect</button><button id="tenant_disconnect">Disconnect</button></div>
+    </div>
+    <p id="tenant_status">Not connected. Tenant credentials are never saved by this console.</p>
+    <div id="tenant_identity"></div>
+  </div>
+  <div class="tenant-layout">
+    <div class="tenant-panel"><h3>USAGE · CURRENT MONTH</h3><button id="tenant_usage_refresh">Refresh usage</button><pre id="tenant_usage">Connect to load tenant usage.</pre></div>
+    <div class="tenant-panel"><h3>TENANT AUDIT</h3><button id="tenant_audit_refresh">Refresh audit</button><button id="tenant_audit_verify">Verify chain</button><pre id="tenant_audit">Connect with audit:read permission.</pre></div>
+    <div class="tenant-panel"><h3>DECISION RULES</h3><button id="tenant_rules_refresh">Refresh rules</button><div id="tenant_rules" class="tenant-list"></div>
+      <div id="tenant_rule_editor" hidden><label>New rule (JSON)</label><textarea id="tenant_rule_json">{"name":"High risk review","field":"risk_level","op":"gte","value":8,"action":"require_review","priority":100}</textarea><button id="tenant_rule_create">Create rule</button></div>
+    </div>
+    <div class="tenant-panel"><h3>TENANT EVIDENCE</h3><button id="tenant_evidence_refresh">List records</button><button id="tenant_evidence_verify">Verify ledger</button><pre id="tenant_evidence">Connect with evidence:read permission.</pre></div>
+    <div class="tenant-panel"><h3>GOVERNED OPERATIONS</h3><label>Decision context (JSON)</label><textarea id="tenant_decision_context">{"risk_level":8}</textarea><button id="tenant_decide">Run tenant decision</button>
+      <label>AEON emotional tone</label><select id="tenant_tone"><option>neutral</option><option>happy</option><option>relaxed</option><option>frustrated</option><option>anxious</option><option>confident</option></select><button id="tenant_protocol">Run AEON response</button><pre id="tenant_operations">Requires governance:execute.</pre></div>
+  </div>
+  <div class="tenant-layout">
+    <div class="tenant-panel"><h3>ASSISTANT CONVERSATIONS</h3><div class="row"><input id="tenant_conversation_title" placeholder="New conversation title"><button id="tenant_conversation_create">New</button></div><div id="tenant_conversations" class="tenant-list"></div></div>
+    <div class="tenant-panel" style="grid-column:span 2">
+      <h3 id="tenant_chat_title">TENANT ASSISTANT</h3><div id="tenant_messages"></div>
+      <label>Message</label><textarea id="tenant_chat" placeholder="Message the tenant assistant…"></textarea>
+      <button id="tenant_send">Send message</button><pre id="tenant_chat_status"></pre>
+    </div>
+  </div>
+</section>
 </main>
 <script>
 const $=id=>document.getElementById(id),v=id=>$(id).value;
-const tabs=['catalog','govern','decide','protocols','stats','assistant','audit'];
+const tabs=['catalog','govern','decide','protocols','stats','assistant','audit','tenant'];
 $('nav').innerHTML=tabs.map(t=>`<button data-t="${t}">${t}</button>`).join('');
 $('nav').onclick=e=>{const t=e.target.dataset.t;if(!t)return;tabs.forEach(x=>{$(x).classList.toggle('on',x===t)});
- [...$('nav').children].forEach(b=>b.classList.toggle('on',b.dataset.t===t));if(t==='catalog')loadCatalog()};
+ [...$('nav').children].forEach(b=>b.classList.toggle('on',b.dataset.t===t));if(t==='catalog')loadCatalog();if(t==='tenant'&&tenantSession)refreshTenantWorkspace()};
 const hdr=()=>({'Content-Type':'application/json',...(v('tok')?{Authorization:'Bearer '+v('tok')}:{})});
 async function show(r,out){const t=await r.text();let j;try{j=JSON.stringify(JSON.parse(t),null,2)}catch{j=t}
  $(out).textContent=r.status+' '+(r.ok?'OK':'ERROR')+'\n'+j;$(out).className=r.ok?'ok':'bad'}
@@ -61,6 +104,130 @@ async function loadCatalog(){const r=await fetch('/v1/catalog',{headers:hdr()});
  $('cards').innerHTML=d.projects.map(p=>`<div class="card"><b>${p.path.split('/').pop()}</b><br><span style="color:var(--mute)">${p.summary}</span><br>
  ${Object.entries(p.languages||{}).slice(0,3).map(([k,n])=>`<span class="tag">${k} ${n}</span>`).join('')}
  <br><small>${(p.platform_features||[]).map(f=>`<span class="tag">${f}</span>`).join('')}</small></div>`).join('')}
+
+let tenantSession=null, selectedTenantConversation=null, tenantRulesCache=[];
+const tenantEl=id=>$('tenant_'+id);
+const tenantHeaders=()=>({
+  Authorization:'Bearer '+(tenantSession?.token||''),
+  'X-OMNIS-Tenant':tenantSession?.tenant||'',
+  'Content-Type':'application/json'
+});
+async function tenantRequest(path,method='GET',body){
+  if(!tenantSession)throw new Error('Connect a tenant credential first');
+  const r=await fetch(path,{method,headers:tenantHeaders(),...(body===undefined?{}:{body:JSON.stringify(body)})});
+  const raw=await r.text();let data={};try{data=raw?JSON.parse(raw):{}}catch{data={detail:raw}}
+  if(!r.ok)throw new Error('HTTP '+r.status+': '+(data.detail||raw||r.statusText));
+  return data;
+}
+function tenantStatus(message,bad=false){tenantEl('status').textContent=message;tenantEl('status').className=bad?'bad':'ok'}
+function tenantPre(id,value){tenantEl(id).textContent=typeof value==='string'?value:JSON.stringify(value,null,2)}
+function tenantNode(tag,cls,txt){const n=document.createElement(tag);if(cls)n.className=cls;if(txt!==undefined)n.textContent=String(txt);return n}
+async function connectTenant(){
+  const token=tenantEl('token').value.trim(),tenant=tenantEl('id').value.trim();
+  if(!token||!tenant){tenantStatus('Both tenant credential and tenant UUID are required.',true);return}
+  tenantSession={token,tenant,permissions:[]};selectedTenantConversation=null;
+  try{
+    const me=await tenantRequest('/v1/identity/me');
+    tenantSession.permissions=me.permissions||[];
+    tenantEl('identity').textContent=me.display_name+' · '+me.email+' · '+me.role+' · '+me.tenant_id;
+    tenantStatus('Authenticated · '+me.permissions.join(', '));
+    await refreshTenantWorkspace();
+  }catch(e){tenantSession=null;tenantEl('identity').textContent='';tenantStatus(e.message,true)}
+}
+function disconnectTenant(){
+  tenantSession=null;selectedTenantConversation=null;
+  tenantEl('token').value='';tenantEl('id').value='';tenantEl('identity').textContent='';
+  tenantEl('conversations').replaceChildren();tenantEl('messages').replaceChildren();
+  tenantStatus('Disconnected. Credentials cleared from this page session.');
+}
+async function refreshTenantWorkspace(){
+  if(!tenantSession)return;
+  await Promise.allSettled([loadTenantUsage(),loadTenantAudit(),loadTenantRules(),loadTenantConversations(),loadTenantEvidence()]);
+}
+async function loadTenantUsage(){try{tenantPre('usage',await tenantRequest('/v1/tenant/usage'))}catch(e){tenantPre('usage',e.message)}}
+async function loadTenantAudit(){try{tenantPre('audit',await tenantRequest('/v1/tenant/audit'))}catch(e){tenantPre('audit',e.message)}}
+async function verifyTenantAudit(){try{tenantPre('audit',await tenantRequest('/v1/tenant/audit/verify'))}catch(e){tenantPre('audit',e.message)}}
+async function loadTenantEvidence(){try{tenantPre('evidence',await tenantRequest('/v1/tenant/evidence'))}catch(e){tenantPre('evidence',e.message)}}
+async function verifyTenantEvidence(){try{tenantPre('evidence',await tenantRequest('/v1/tenant/evidence/verify'))}catch(e){tenantPre('evidence',e.message)}}
+async function runTenantDecision(){try{const context=JSON.parse(tenantEl('decision_context').value);tenantPre('operations',await tenantRequest('/v1/tenant/decide','POST',{context,attributes:{}}))}catch(e){tenantPre('operations',e.message)}}
+async function runTenantProtocol(){try{tenantPre('operations',await tenantRequest('/v1/tenant/protocols/respond','POST',{emotional_tone:tenantEl('tone').value,attributes:{}}))}catch(e){tenantPre('operations',e.message)}}
+async function loadTenantRules(){
+  const host=tenantEl('rules');host.replaceChildren();
+  try{
+    const data=await tenantRequest('/v1/tenant/decision-rules');tenantRulesCache=data.rules||[];
+    tenantEl('rule_editor').hidden=!tenantSession.permissions.includes('decision_rules:manage');
+    if(!tenantRulesCache.length){host.append(tenantNode('span','', 'No tenant rules configured.'));return}
+    for(const rule of tenantRulesCache){
+      const line=tenantNode('div','tenant-message',rule.name+' · '+rule.field+' '+rule.op+' '+JSON.stringify(rule.value)+' → '+rule.action);
+      line.append(tenantNode('small','', 'Priority '+rule.priority+' · '+(rule.enabled?'enabled':'disabled')));
+      if(tenantSession.permissions.includes('decision_rules:manage')){
+        const del=tenantNode('button','','Delete');del.type='button';del.addEventListener('click',async()=>{try{await tenantRequest('/v1/tenant/decision-rules/'+encodeURIComponent(rule.rule_id),'DELETE');await loadTenantRules()}catch(e){tenantStatus(e.message,true)}});
+        line.append(del);
+      }
+      host.append(line);
+    }
+  }catch(e){host.append(tenantNode('span','bad',e.message))}
+}
+async function createTenantRule(){
+  try{const body=JSON.parse(tenantEl('rule_json').value);await tenantRequest('/v1/tenant/decision-rules','POST',body);await loadTenantRules();tenantStatus('Decision rule created.')}
+  catch(e){tenantStatus(e.message,true)}
+}
+async function loadTenantConversations(){
+  const host=tenantEl('conversations');host.replaceChildren();
+  try{
+    const data=await tenantRequest('/v1/tenant/assistant/conversations');
+    for(const item of (data.conversations||[])){
+      const b=tenantNode('button',item.conversation_id===selectedTenantConversation?'selected':'',item.title+' · '+item.message_count+' messages');
+      b.type='button';b.addEventListener('click',()=>selectTenantConversation(item.conversation_id));host.append(b);
+    }
+    if(!data.conversations?.length)host.append(tenantNode('span','','No conversations yet.'));
+  }catch(e){host.append(tenantNode('span','bad',e.message))}
+}
+async function selectTenantConversation(id){
+  selectedTenantConversation=id;await loadTenantConversations();
+  try{
+    const data=await tenantRequest('/v1/tenant/assistant/conversations/'+encodeURIComponent(id));
+    tenantEl('chat_title').textContent=data.conversation.title;
+    const host=tenantEl('messages');host.replaceChildren();
+    for(const msg of (data.messages||[]))host.append(tenantNode('div','tenant-message '+msg.role,msg.role.toUpperCase()+'\n'+msg.content));
+    host.scrollTop=host.scrollHeight;
+  }catch(e){tenantPre('chat_status',e.message)}
+}
+async function createTenantConversation(){
+  try{
+    const title=tenantEl('conversation_title').value.trim()||'New conversation';
+    const data=await tenantRequest('/v1/tenant/assistant/conversations','POST',{title});
+    tenantEl('conversation_title').value='';
+    await loadTenantConversations();await selectTenantConversation(data.conversation.conversation_id);
+    tenantStatus('Conversation created.');
+  }catch(e){tenantStatus(e.message,true)}
+}
+async function sendTenantMessage(){
+  if(!selectedTenantConversation){tenantStatus('Create or select a conversation first.',true);return}
+  const message=tenantEl('chat').value.trim();if(!message)return;
+  tenantEl('chat').value='';tenantEl('send').disabled=true;tenantPre('chat_status','Sending…');
+  try{
+    const data=await tenantRequest('/v1/tenant/assistant/conversations/'+encodeURIComponent(selectedTenantConversation)+'/messages','POST',{message});
+    await selectTenantConversation(selectedTenantConversation);tenantPre('chat_status','Reply received.');
+    await Promise.allSettled([loadTenantUsage(),loadTenantAudit(),loadTenantConversations()]);
+  }catch(e){tenantPre('chat_status',e.message);tenantEl('chat').value=message}
+  finally{tenantEl('send').disabled=false}
+}
+tenantEl('connect').addEventListener('click',connectTenant);
+tenantEl('disconnect').addEventListener('click',disconnectTenant);
+tenantEl('usage_refresh').addEventListener('click',loadTenantUsage);
+tenantEl('audit_refresh').addEventListener('click',loadTenantAudit);
+tenantEl('audit_verify').addEventListener('click',verifyTenantAudit);
+tenantEl('rules_refresh').addEventListener('click',loadTenantRules);
+tenantEl('evidence_refresh').addEventListener('click',loadTenantEvidence);
+tenantEl('evidence_verify').addEventListener('click',verifyTenantEvidence);
+tenantEl('decide').addEventListener('click',runTenantDecision);
+tenantEl('protocol').addEventListener('click',runTenantProtocol);
+tenantEl('rule_create').addEventListener('click',createTenantRule);
+tenantEl('conversation_create').addEventListener('click',createTenantConversation);
+tenantEl('send').addEventListener('click',sendTenantMessage);
+tenantEl('chat').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendTenantMessage()}});
+
 fetch('/health').then(async r=>{const h=await r.json();const healthy=r.ok&&h.status==='ok';const evidenceValid=Boolean(h.evidence_ledger&&h.evidence_ledger.valid);$('st').textContent=`v${h.version} · ${healthy?'healthy':'DEGRADED'} · audit chain ${h.audit_chain_valid?'valid':'BROKEN'} · evidence ledger ${evidenceValid?'valid':'BROKEN'} · assistant ${h.assistant_configured?'ready':'not configured'}`;$('st').className=healthy?'ok':'bad'}).catch(()=>{$('st').textContent='health status unavailable';$('st').className='bad'});
 tabs.forEach(x=>$(x).classList.remove('on'));$('catalog').classList.add('on');$('nav').children[0].classList.add('on');loadCatalog();
 </script>

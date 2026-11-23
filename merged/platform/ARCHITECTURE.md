@@ -125,3 +125,20 @@ principal-attributed in the tenant audit chain. Assistant access is separately
 permissioned through `assistant:use`; the Anthropic provider credential and billing
 remain platform-managed rather than tenant-managed. Message history is append-only
 through the application runtime role.
+
+
+## Unified tenant workspace
+
+The FastAPI-served console at `/` exposes the tenant-aware OMNIS capabilities in
+one browser workspace. Tenant credentials are entered separately from the legacy
+global API token and are used only with the matching `X-OMNIS-Tenant` header.
+The browser obtains its role and permissions from `/v1/identity/me`; all feature
+requests continue to pass through the tenant authentication middleware and the
+underlying per-route permission checks.
+
+The workspace currently surfaces tenant usage summaries, tenant audit listing
+and verification, tenant decision-rule management, and tenant assistant
+conversations. Conversation history is fetched from the PostgreSQL tenant store
+through `GET /v1/tenant/assistant/conversations/{conversation_id}`; no browser
+supplied history is trusted by the generation endpoint. The console keeps the
+credential in page memory only and does not persist it to local storage.
