@@ -61,3 +61,19 @@ Tenant evidence uses a separate PostgreSQL table and adapter. It has forced row-
 security, per-tenant idempotency, tenant-local hash chains, and principal-attributed
 audit events. The original global evidence ledger remains separate for legacy
 single-tenant callers; no historical evidence is silently assigned to a tenant.
+
+
+## Tenant administration and source acquisition
+
+The tenant identity layer now supports owner/admin membership lifecycle operations,
+credential issuance and revocation, and tenant-aware controlled source acquisition.
+Membership and credential mutations are serialized and audited in the same
+PostgreSQL transaction. PostgreSQL RLS scopes tenant, membership, credential, and
+tenant-evidence rows from a transaction-local tenant identifier. Only a tenant
+owner may assign the owner role or modify an existing owner's membership; the last
+active owner cannot be demoted or suspended.
+
+The tenant source connector applies COVENANT authorization before outbound network
+access and appends the signed fetch observation to the selected tenant's separate
+evidence ledger. The global evidence and governance routes remain behind the legacy
+shared token until their storage and query paths are tenant-aware.
