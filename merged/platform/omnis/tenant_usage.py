@@ -95,8 +95,9 @@ class TenantUsageStore:
                     else:
                         cur.execute(
                             """INSERT INTO omnis.tenant_usage_minute
-                               (tenant_id, window_start, request_count) VALUES (%s, %s, 1)""",
-                            (tenant, window))
+                               (tenant_id, window_start, request_count, updated_at)
+                               VALUES (%s, %s, 1, %s)""",
+                            (tenant, window, decision_at))
                     cur.execute(
                         """INSERT INTO omnis.tenant_usage_event
                            (tenant_id, principal_id, operation, units, outcome, occurred_at)
