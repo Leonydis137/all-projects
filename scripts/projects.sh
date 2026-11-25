@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run commands against projects listed in the root projects.json catalog.
-# Usage: scripts/projects.sh list | install|test|build [path|all]
+# Usage: scripts/projects.sh list | install|test|build [catalog-path|all]
 set -Eeuo pipefail
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CATALOG="${PROJECTS_CATALOG:-$ROOT/projects.json}"
 cd "$ROOT"
@@ -37,12 +38,19 @@ for item in projects:
         raise SystemExit(f"invalid or duplicate project path: {path!r}")
     if not isinstance(directory, str) or not directory:
         raise SystemExit(f"invalid directory for {path}")
-    if kind not in supported:
+    if not isinstance(kind, str) or kind not in supported:
         raise SystemExit(f"unsupported project kind for {path}: {kind!r}")
-    if Path(directory).is_absolute() or ".." in Path(directory).parts:
-        raise SystemExit(f"unsafe project directory for {path}: {directory}")
     if any("\t" in value or "\n" in value for value in (path, kind, directory)):
         raise SystemExit(f"tab/newline is not allowed in catalog fields: {path}")
+    candidate = Path(directory)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise SystemExit(f"unsafe project directory for {path}: {directory}")
+    root = Path.cwd().resolve()
+    resolved = (root / candidate).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        raise SystemExit(f"project directory escapes repository root: {directory}")
     seen.add(path)
     print(path, kind, directory, sep="\t")
 PY
@@ -50,7 +58,7 @@ PY
 
 run_project() {
   local project="$1" kind="$2" action="$3" directory="$4"
-  if [[ ! -d "$directory" ]]; then
+  if [[ ! -d "$ROOT/$directory" ]]; then
     echo "ERROR: project directory does not exist: $directory" >&2
     return 1
   fi
@@ -136,20 +144,7 @@ case "$cmd" in
     found=0
     failures=0
     rows="$(catalog_rows)"
-    while IFS=    if [[ "$found" -eq 0 ]]; then
-      echo "ERROR: no catalog entry matches '$target'" >&2
-      exit 2
-    fi
-    if [[ "$failures" -gt 0 ]]; then
-      echo "$failures project operation(s) failed." >&2
-      exit 1
-    fi
-    ;;
-  *)
-    usage
-    ;;
-esac
-\t' read -r project kind directory; do
+    while IFS=$'\t' read -r project kind directory; do
       [[ -n "$project" ]] || continue
       if [[ "$target" != all && "$target" != "$project" ]]; then
         continue
@@ -161,6 +156,7 @@ esac
         failures=$((failures + 1))
       fi
     done <<< "$rows"
+
     if [[ "$found" -eq 0 ]]; then
       echo "ERROR: no catalog entry matches '$target'" >&2
       exit 2
