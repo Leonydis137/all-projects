@@ -52,6 +52,7 @@ jobs:
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
+          import re
           from pathlib import Path
 
           catalog = json.loads(Path("projects.json").read_text(encoding="utf-8"))
@@ -60,7 +61,16 @@ jobs:
               kind = item["kind"]
               directory = Path(item.get("dir", item["path"]))
               if kind in {"node", "expo", "pnpm"} and (directory / "package.json").is_file():
-                  selected.append({"path": item["path"], "dir": str(directory), "kind": kind})
+                  package = json.loads((directory / "package.json").read_text(encoding="utf-8"))
+                  node_engine = package.get("engines", {}).get("node", "")
+                  match = re.search(r"(?:>=|\\^|~)?\\s*(\\d+)", node_engine)
+                  node_version = match.group(1) if match else "20"
+                  selected.append({
+                      "path": item["path"],
+                      "dir": str(directory),
+                      "kind": kind,
+                      "node_version": node_version,
+                  })
               elif kind == "python" and item["path"] != "merged/platform" and any((directory / name).is_file() for name in ("requirements.txt", "pyproject.toml", "setup.py")):
                   selected.append({"path": item["path"], "dir": str(directory), "kind": kind})
           if not selected:
@@ -81,9 +91,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
+        if: matrix.kind != 'python'
         with:
-          node-version: 20
+          node-version: ${{ matrix.node_version }}
       - uses: actions/setup-python@v7
+        if: matrix.kind == 'python'
         with:
           python-version: "3.12"
       - name: Enable pnpm
