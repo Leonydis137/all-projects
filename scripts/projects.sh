@@ -42,10 +42,10 @@ for item in projects:
         raise SystemExit(f"unsupported project kind for {path}: {kind!r}")
     if Path(directory).is_absolute() or ".." in Path(directory).parts:
         raise SystemExit(f"unsafe project directory for {path}: {directory}")
-    if any("\\t" in value or "\\n" in value for value in (path, kind, directory)):
+    if any("\t" in value or "\n" in value for value in (path, kind, directory)):
         raise SystemExit(f"tab/newline is not allowed in catalog fields: {path}")
     seen.add(path)
-    print(path, kind, directory, sep="\\t")
+    print(path, kind, directory, sep="\t")
 PY
 }
 
@@ -131,13 +131,13 @@ cmd="${1:-list}"
 target="${2:-all}"
 case "$cmd" in
   list)
-    catalog_rows | awk -F '\\t' '{ printf "%-45s %-8s %s\\n", $1, $2, $3 }'
+    catalog_rows | awk -F '\t' '{ printf "%-45s %-8s %s\n", $1, $2, $3 }'
     ;;
   install|test|build)
     found=0
     failures=0
     rows="$(catalog_rows)"
-    while IFS=$'\\t' read -r project kind directory; do
+    while IFS=$'\t' read -r project kind directory; do
       [[ -n "$project" ]] || continue
       if [[ "$target" != all && "$target" != "$project" ]]; then
         continue
