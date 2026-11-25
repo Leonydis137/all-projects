@@ -569,6 +569,8 @@ def fetch_tenant_source(body: SourceFetchIn,
         raise HTTPException(403, "tenant role lacks source acquisition permissions")
     if tenant_evidence is None:
         raise HTTPException(503, "PostgreSQL tenant evidence is not configured")
+    if tenant_audit is None:
+        raise HTTPException(503, "PostgreSQL tenant audit is not configured")
     try:
         gated("tenant.source.fetch", {"tenant_id": principal.tenant_id,
                                       "source_uri": body.source_uri}, actor=principal.principal_id,
@@ -577,8 +579,10 @@ def fetch_tenant_source(body: SourceFetchIn,
             body.source_uri, body.license,
             os.environ.get("OMNIS_SOURCE_FETCHER_ID", "omnis-source-fetcher"),
         )
+        # Evidence and its audit event must commit in the same transaction on
+        # the authenticated tenant's audit chain, never the global audit log.
         stored = tenant_evidence.append_with_audit(
-            record, principal.tenant_id, principal.principal_id, audit
+            record, principal.tenant_id, principal.principal_id, tenant_audit
         )
         return {"record": stored, "acquisition": acquisition}
     except SourcePolicyError as exc:
@@ -587,8 +591,8 @@ def fetch_tenant_source(body: SourceFetchIn,
         raise HTTPException(503, str(exc)) from exc
     except SourceUnavailable as exc:
         raise HTTPException(502, str(exc)) from exc
-    except EvidenceIntegrityError:
-        return JSONResponse(status_code=503, content={"detail": "tenant_evidence_integrity_error"})
+    except (EvidenceIntegrityError, TenantAuditIntegrityError):
+        return JSONResponse(status_code=503, content={"detail": "tenant_evidence_or_audit_integrity_error"})
     except EvidenceValidationError as exc:
         raise HTTPException(422, str(exc)) from exc
 
