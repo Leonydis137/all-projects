@@ -169,7 +169,9 @@ Send the tenant UUID in `X-OMNIS-Tenant`. The role must include
 `evidence:write` for append or `evidence:read` for list/verify. The API assigns
 `submitted_by` from the authenticated principal; clients cannot spoof the actor.
 The table has forced PostgreSQL row-level security, tenant-specific idempotency
-keys, independent hash chains, and append-only triggers. Each operation records
+keys, independent hash chains, and append-only triggers. Migration 016 binds each
+new evidence row's `submitted_by` to the transaction's authenticated principal and
+requires active membership, principal, and tenant status. Each operation records
 the authenticated principal as the audit actor.
 
 The existing global `/v1/evidence` routes remain on the legacy shared-token path.

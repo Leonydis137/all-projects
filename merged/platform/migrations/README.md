@@ -17,7 +17,7 @@ Apply migrations in numeric order using a database-owner or migration role befor
 13. `013_tenant_usage_metering.sql` adds tenant usage events, rolling-minute counters, and configurable monthly request quotas with forced RLS.
 14. `014_tenant_usage_policy_member_reads.sql` fixes quota-policy visibility so every active member can read the tenant's configured limit; policy ownership remains audit metadata, not a read restriction.
 15. `015_tenant_audit_active_actor.sql` requires every tenant audit insert to be attributed to the transaction's authenticated principal, with active membership, principal, and tenant status.
-16. `016_tenant_evidence_and_rules_active_actor.sql` binds tenant evidence submissions and decision-rule mutations to the transaction principal, requiring active membership, principal, and tenant status.
+we16. `016_tenant_evidence_and_rules_active_actor.sql` binds tenant evidence submissions and decision-rule mutations to the transaction principal, requiring active membership, principal, and tenant status.
 17. `017_tenant_lifecycle_storage_rls.sql` requires active tenant/principal/membership state for assistant and usage operations, makes message and usage-event history append-only, and separates credential read, issue, and revocation policies.
 
 Example:
