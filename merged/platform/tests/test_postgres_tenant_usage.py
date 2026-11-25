@@ -101,6 +101,26 @@ def test_concurrent_usage_consumption_never_exceeds_minute_limit(postgres_dsn):
     summary = usage.summary(tenant_id, principal_id, audit)
     assert summary["accepted_requests"] == 4
     assert sum(row["events"] for row in summary["usage"]) == 20
+
+    # Every persisted event must be charged to the exact minute bucket that
+    # contains its post-lock decision timestamp, including requests queued on
+    # the tenant advisory lock.
+    import psycopg
+
+    with psycopg.connect(postgres_dsn) as db:
+        bucket_counts = db.execute(
+            """SELECT m.window_start, m.request_count, count(e.usage_id)
+               FROM omnis.tenant_usage_minute AS m
+               LEFT JOIN omnis.tenant_usage_event AS e
+                 ON e.tenant_id = m.tenant_id
+                AND date_trunc('minute', e.occurred_at) = m.window_start
+               WHERE m.tenant_id = %s
+               GROUP BY m.window_start, m.request_count""",
+            (tenant_id,),
+        ).fetchall()
+    assert bucket_counts
+    assert all(request_count == event_count
+               for _, request_count, event_count in bucket_counts)
     assert audit.verify(tenant_id)["valid"] is True
 
 
