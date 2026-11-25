@@ -144,6 +144,7 @@ class PostgresTenantAuditLog:
         principal = self._uuid(actor, "actor")
         with db.cursor() as cur:
             self._scope(cur, tenant)
+            cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (principal,))
             return self._append_cursor(cur, tenant, kind, payload, principal)
 
     def record(self, kind: str, payload: dict[str, Any],
@@ -153,6 +154,7 @@ class PostgresTenantAuditLog:
         with self._connect() as db:
             with db.cursor() as cur:
                 self._scope(cur, tenant)
+                cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (principal,))
                 result = self._append_cursor(cur, tenant, kind, payload, principal)
         return result
 

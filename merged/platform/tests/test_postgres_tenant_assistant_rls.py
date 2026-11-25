@@ -29,6 +29,7 @@ MIGRATIONS = (
     "012_tenant_assistant_conversations.sql",
     "013_tenant_usage_metering.sql",
     "014_tenant_usage_policy_member_reads.sql",
+    "015_tenant_audit_active_actor.sql",
 )
 
 
@@ -57,7 +58,10 @@ def assistant_rls_dsn():
             f"GRANT SELECT, INSERT, UPDATE ON "
             f"omnis.tenant_assistant_conversation, omnis.tenant_assistant_message TO {TEST_ROLE}"
         )
-        db.execute(f"GRANT SELECT ON omnis.tenant_membership TO {TEST_ROLE}")
+        db.execute(
+            f"GRANT SELECT ON omnis.tenant, omnis.principal, omnis.tenant_membership TO {TEST_ROLE}"
+        )
+        db.execute(f"GRANT SELECT, INSERT ON omnis.tenant_audit_event TO {TEST_ROLE}")
     return DSN
 
 
@@ -216,3 +220,95 @@ def test_assistant_tables_keep_forced_rls(assistant_rls_dsn):
             ("tenant_assistant_conversation", True, True),
             ("tenant_assistant_message", True, True),
         ]
+
+def test_tenant_audit_inserts_require_matching_active_actor_and_tenant(assistant_rls_dsn):
+    import psycopg
+    from omnis.postgres_tenant_audit import PostgresTenantAuditLog
+
+    marker = uuid4().hex
+    tenant_a, actor_a, _, tenant_b, actor_b, _ = _seed_two_tenants(assistant_rls_dsn, marker)
+    suspended_actor, disabled_actor, spoofed_actor = uuid4(), uuid4(), uuid4()
+    suspended_tenant, suspended_tenant_actor = uuid4(), uuid4()
+
+    with psycopg.connect(assistant_rls_dsn) as db:
+        db.execute(
+            "INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+            (suspended_actor, f"audit-suspended-{marker}@example.test", "Suspended actor"),
+        )
+        db.execute(
+            "INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) "
+            "VALUES (%s, %s, 'reader', 'suspended')",
+            (tenant_a, suspended_actor),
+        )
+        db.execute(
+            "INSERT INTO omnis.principal (principal_id, email, display_name, status) "
+            "VALUES (%s, %s, %s, 'disabled')",
+            (disabled_actor, f"audit-disabled-{marker}@example.test", "Disabled actor"),
+        )
+        db.execute(
+            "INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) "
+            "VALUES (%s, %s, 'reader', 'active')",
+            (tenant_a, disabled_actor),
+        )
+        db.execute(
+            "INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+            (spoofed_actor, f"audit-spoofed-{marker}@example.test", "Alternate active actor"),
+        )
+        db.execute(
+            "INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) "
+            "VALUES (%s, %s, 'reader', 'active')",
+            (tenant_a, spoofed_actor),
+        )
+        db.execute(
+            "INSERT INTO omnis.tenant (tenant_id, slug, display_name, status) "
+            "VALUES (%s, %s, %s, 'suspended')",
+            (suspended_tenant, "audit-suspended-" + marker[:20], "Suspended audit tenant"),
+        )
+        db.execute(
+            "INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+            (suspended_tenant_actor, f"audit-tenant-actor-{marker}@example.test", "Tenant actor"),
+        )
+        db.execute(
+            "INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) "
+            "VALUES (%s, %s, 'owner', 'active')",
+            (suspended_tenant, suspended_tenant_actor),
+        )
+
+    audit = PostgresTenantAuditLog(
+        assistant_rls_dsn,
+        connect_factory=lambda: _runtime_connection(assistant_rls_dsn),
+    )
+    accepted = audit.record(
+        "tenant.audit.accepted", {"tenant_id": tenant_a}, actor=actor_a
+    )
+    assert accepted["actor"] == actor_a
+
+    # A caller cannot forge another active member as the event actor.
+    with _runtime_connection(assistant_rls_dsn) as db:
+        db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant_a,))
+        db.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor_a,))
+        with pytest.raises(psycopg.Error):
+            db.execute(
+                """INSERT INTO omnis.tenant_audit_event
+                   (tenant_id, event_index, occurred_at, actor, event_type, payload,
+                    previous_hash, event_hash, event_json)
+                   VALUES (%s, 999999, now(), %s, 'tenant.audit.spoofed', '{}'::jsonb,
+                           %s, %s, '{}')""",
+                (tenant_a, spoofed_actor, "0" * 64, "f" * 64),
+            )
+
+    # A principal from tenant B cannot write into tenant A's chain.
+    with pytest.raises(psycopg.Error):
+        audit.record("tenant.audit.cross_tenant", {"tenant_id": tenant_a}, actor=actor_b)
+
+    # Membership suspension, principal disablement, and tenant suspension
+    # each invalidate the database-level INSERT policy.
+    with pytest.raises(psycopg.Error):
+        audit.record("tenant.audit.suspended_member", {"tenant_id": tenant_a},
+                     actor=str(suspended_actor))
+    with pytest.raises(psycopg.Error):
+        audit.record("tenant.audit.disabled_principal", {"tenant_id": tenant_a},
+                     actor=str(disabled_actor))
+    with pytest.raises(psycopg.Error):
+        audit.record("tenant.audit.suspended_tenant", {"tenant_id": str(suspended_tenant)},
+                     actor=str(suspended_tenant_actor))

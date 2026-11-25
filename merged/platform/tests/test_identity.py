@@ -154,7 +154,9 @@ def test_identity_endpoint_uses_database_principal_and_attributes_audit(monkeypa
         credential_prefix=TOKEN[:32],
     )
     test_audit = AuditLog()
+    tenant_log = AuditLog()
     monkeypatch.setattr(api, "audit", test_audit)
+    monkeypatch.setattr(api, "tenant_audit", tenant_log)
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant: principal)
     response = TestClient(api.app).get(
         "/v1/identity/me",
@@ -163,9 +165,10 @@ def test_identity_endpoint_uses_database_principal_and_attributes_audit(monkeypa
     assert response.status_code == 200
     assert response.json()["principal_id"] == principal.principal_id
     assert "evidence:write" in response.json()["permissions"]
-    assert all(entry.get("actor") == principal.principal_id for entry in test_audit.list())
-    assert all(entry["payload"].get("tenant_id") == principal.tenant_id for entry in test_audit.list())
-    assert test_audit.verify()
+    assert all(entry.get("actor") == principal.principal_id for entry in tenant_log.list())
+    assert all(entry["payload"].get("tenant_id") == principal.tenant_id for entry in tenant_log.list())
+    assert tenant_log.verify()
+    assert test_audit.list() == []
 
 
 def test_identity_endpoint_rejects_missing_tenant_header():
@@ -217,8 +220,10 @@ def test_tenant_evidence_routes_enforce_role_and_tenant_context(monkeypatch):
 
     store = TenantStore()
     test_audit = AuditLog()
+    tenant_log = AuditLog()
     monkeypatch.setattr(api, "tenant_evidence", store)
     monkeypatch.setattr(api, "audit", test_audit)
+    monkeypatch.setattr(api, "tenant_audit", tenant_log)
     current = {"principal": operator}
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: current["principal"])
     client = TestClient(api.app)
@@ -246,7 +251,8 @@ def test_tenant_evidence_routes_enforce_role_and_tenant_context(monkeypatch):
     listed = client.get("/v1/tenant/evidence", headers=headers)
     assert listed.status_code == 200
     assert listed.json()["records"][0]["tenant_id"] == tenant
-    assert test_audit.verify()
+    assert tenant_log.verify()
+    assert test_audit.list() == []
     current["principal"] = owner
     verified = client.get("/v1/tenant/evidence/verify", headers=headers)
     assert verified.status_code == 200
@@ -290,6 +296,7 @@ def test_tenant_admin_routes_require_membership_management(monkeypatch):
     current = {"principal": owner}
     monkeypatch.setattr(api, "tenant_admin", store)
     monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "tenant_audit", AuditLog())
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: current["principal"])
     client = TestClient(api.app)
     headers = {"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant}
@@ -318,6 +325,7 @@ def test_only_owner_can_assign_owner_role(monkeypatch):
             raise AssertionError("owner assignment must be rejected before storage")
     monkeypatch.setattr(api, "tenant_admin", AdminStore())
     monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "tenant_audit", AuditLog())
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: admin)
     response = TestClient(api.app).post(
         "/v1/tenant/members",
@@ -369,6 +377,7 @@ def test_owner_can_assign_second_owner(monkeypatch):
             return {"tenant_id": tenant_id, "email": email, "role": role}
     monkeypatch.setattr(api, "tenant_admin", AdminStore())
     monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "tenant_audit", AuditLog())
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: owner)
     response = TestClient(api.app).post(
         "/v1/tenant/members",
@@ -496,6 +505,7 @@ def test_tenant_credential_inventory_is_permission_gated_and_never_returns_token
     current = {"principal": owner}
     monkeypatch.setattr(api, "tenant_admin", AdminStore())
     monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "tenant_audit", AuditLog())
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: current["principal"])
     client = TestClient(api.app)
     headers = {"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant}
@@ -562,8 +572,9 @@ def test_tenant_admin_overview_is_owner_only_and_tenant_scoped(monkeypatch):
     current = {"principal": owner}
     monkeypatch.setattr(api, "tenant_admin", AdminStore())
     test_audit = AuditLog()
+    tenant_log = AuditLog()
     monkeypatch.setattr(api, "audit", test_audit)
-    monkeypatch.setattr(api, "tenant_audit", None)
+    monkeypatch.setattr(api, "tenant_audit", tenant_log)
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: current["principal"])
     client = TestClient(api.app)
     headers = {"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant}
@@ -572,7 +583,8 @@ def test_tenant_admin_overview_is_owner_only_and_tenant_scoped(monkeypatch):
     assert response.status_code == 200
     assert response.json()["overview"]["active_owner_count"] == 1
     assert response.json()["overview"]["tenant_id"] == tenant
-    assert any(entry.get("actor") == owner.principal_id for entry in test_audit.list())
+    assert any(entry.get("actor") == owner.principal_id for entry in tenant_log.list())
+    assert test_audit.list() == []
 
     current["principal"] = admin
     denied = client.get("/v1/tenant/admin/overview", headers=headers)
@@ -589,9 +601,188 @@ def test_tenant_admin_overview_rejects_reader(monkeypatch):
                        "reader@example.test", "Reader", "reader", TOKEN[:32])
     monkeypatch.setattr(api, "tenant_admin", object())
     monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "tenant_audit", AuditLog())
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: reader)
     response = TestClient(api.app).get(
         "/v1/tenant/admin/overview",
         headers={"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant},
     )
     assert response.status_code == 403
+
+def test_authenticated_tenant_request_fails_closed_without_tenant_audit(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api
+    from omnis.audit import AuditLog
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    principal = Principal(tenant, "1a2b3c4d-5e6f-4789-8abc-123456789abc",
+                          "owner@example.test", "Owner", "owner", TOKEN[:32])
+    global_log = AuditLog()
+    monkeypatch.setattr(api, "audit", global_log)
+    monkeypatch.setattr(api, "tenant_audit", None)
+    monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: principal)
+
+    response = TestClient(api.app).get(
+        "/v1/identity/me",
+        headers={"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant},
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"] == "tenant_audit_unavailable"
+    assert global_log.list() == []
+
+
+def test_only_owner_can_promote_member_to_owner_through_api(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api
+    from omnis.audit import AuditLog
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    admin = Principal(tenant, "1a2b3c4d-5e6f-4789-8abc-123456789abc",
+                      "admin@example.test", "Admin", "admin", TOKEN[:32])
+
+    class AdminStore:
+        def update_member(self, *args):
+            raise AssertionError("owner promotion must be rejected before storage")
+
+    monkeypatch.setattr(api, "tenant_admin", AdminStore())
+    monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "tenant_audit", AuditLog())
+    monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: admin)
+    response = TestClient(api.app).patch(
+        "/v1/tenant/members/2a2b3c4d-5e6f-4789-8abc-123456789abc",
+        headers={"Authorization": f"Bearer {TOKEN}", "X-OMNIS-Tenant": tenant},
+        json={"role": "owner", "status": "active"},
+    )
+    assert response.status_code == 403
+
+
+def test_tenant_admin_store_rejects_owner_grants_from_non_owners():
+    from omnis.tenant_admin import TenantAdminError, TenantAdminStore
+
+    with pytest.raises(TenantAdminError, match="only an owner"):
+        TenantAdminStore._require_owner_assignment("owner", "admin")
+    with pytest.raises(TenantAdminError, match="only an owner"):
+        TenantAdminStore._require_owner_assignment("owner", "operator")
+    TenantAdminStore._require_owner_assignment("owner", "owner")
+    TenantAdminStore._require_owner_assignment("reader", "admin")
+
+
+@pytest.mark.parametrize(
+    ("role", "expected"),
+    [
+        ("owner", {"identity:read", "tenant:manage", "members:manage", "credentials:manage",
+                   "evidence:read", "evidence:write", "audit:read", "decision_rules:read",
+                   "governance:execute", "decision_rules:manage", "assistant:use",
+                   "usage:read"}),
+        ("admin", {"identity:read", "members:manage", "credentials:manage", "evidence:read",
+                   "evidence:write", "audit:read", "decision_rules:read", "governance:execute",
+                   "decision_rules:manage", "assistant:use", "usage:read"}),
+        ("operator", {"identity:read", "evidence:read", "evidence:write", "governance:execute",
+                      "decision_rules:read", "assistant:use", "usage:read"}),
+        ("analyst", {"identity:read", "evidence:read", "audit:read", "governance:execute",
+                     "decision_rules:read", "assistant:use", "usage:read"}),
+        ("reader", {"identity:read", "evidence:read", "decision_rules:read", "assistant:use",
+                    "usage:read"}),
+    ],
+)
+def test_role_permission_matrix_is_explicit_and_least_privilege(role, expected):
+    principal = Principal(
+        "a3d7a1b4-1b2c-4d5e-8f90-123456789abc",
+        "1a2b3c4d-5e6f-4789-8abc-123456789abc",
+        "user@example.test", "Test User", role, TOKEN[:32],
+    )
+    assert principal.permissions == expected
+    assert principal.allows("identity:read")
+    assert principal.allows("tenant:manage") is (role == "owner")
+    if role not in {"owner", "admin"}:
+        assert not principal.allows("members:manage")
+        assert not principal.allows("credentials:manage")
+    if role not in {"owner", "admin", "analyst"}:
+        assert not principal.allows("audit:read")
+
+
+def test_database_authentication_cannot_reuse_credential_in_another_tenant():
+    from omnis.identity import authenticate_api_key
+
+    tenant_a = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    tenant_b = "b3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    statements = []
+    current_lookup = {"params": None}
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, query, params):
+            normalized = " ".join(query.split())
+            statements.append((normalized, params))
+            if "FROM omnis.api_credential" in normalized:
+                current_lookup["params"] = params
+
+        def fetchone(self):
+            params = current_lookup["params"]
+            if params and params[1] == tenant_a and params[2] == tenant_a:
+                return {
+                    "tenant_id": tenant_a,
+                    "principal_id": "1a2b3c4d-5e6f-4789-8abc-123456789abc",
+                    "email": "user@example.test",
+                    "display_name": "Test User",
+                    "role": "operator",
+                    "token_prefix": TOKEN[:32],
+                }
+            return None
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def cursor(self):
+            return Cursor()
+
+    authenticated = authenticate_api_key(
+        TOKEN, tenant_a, dsn="postgresql://unused", pepper=PEPPER,
+        connect_factory=Connection,
+    )
+    assert authenticated.tenant_id == tenant_a
+
+    with pytest.raises(InvalidCredential):
+        authenticate_api_key(
+            TOKEN, tenant_b, dsn="postgresql://unused", pepper=PEPPER,
+            connect_factory=Connection,
+        )
+
+    assert statements[-2] == (
+        "SELECT set_config('omnis.tenant_id', %s, true)", (tenant_b,)
+    )
+    lookup_sql, lookup_params = statements[-1]
+    assert "c.tenant_id = %s" in lookup_sql
+    assert "t.tenant_id = %s" in lookup_sql
+    assert lookup_params == (digest_api_key(TOKEN, PEPPER), tenant_b, tenant_b, TOKEN[:32])
+    assert tenant_a not in lookup_params
+
+
+def test_legacy_global_token_is_not_accepted_by_tenant_identity(monkeypatch):
+    from fastapi.testclient import TestClient
+    from omnis import api, config
+
+    tenant = "a3d7a1b4-1b2c-4d5e-8f90-123456789abc"
+    monkeypatch.setattr(config, "API_TOKEN", "legacy-only-token")
+
+    def reject_tenant_credential(token, tenant_id):
+        raise InvalidCredential("invalid credential or inactive tenant membership")
+
+    monkeypatch.setattr(api, "authenticate_api_key", reject_tenant_credential)
+    response = TestClient(api.app).get(
+        "/v1/identity/me",
+        headers={
+            "Authorization": "Bearer legacy-only-token",
+            "X-OMNIS-Tenant": tenant,
+        },
+    )
+    assert response.status_code == 401
