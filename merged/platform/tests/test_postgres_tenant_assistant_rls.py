@@ -1,0 +1,218 @@
+"""Live PostgreSQL RLS tests for tenant assistant conversation isolation.
+
+Set OMNIS_TEST_DATABASE_URL to a disposable PostgreSQL database. This suite
+applies the platform migrations and uses a non-superuser, non-BYPASSRLS role.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from uuid import uuid4
+
+import pytest
+
+DSN = os.environ.get("OMNIS_TEST_DATABASE_URL", "").strip()
+TEST_ROLE = "omnis_tenant_assistant_rls_test"
+MIGRATIONS = (
+    "001_evidence_and_audit.sql",
+    "002_ledger_immutability.sql",
+    "003_audit_event_canonical_payload.sql",
+    "004_evidence_idempotency.sql",
+    "005_case_insensitive_source_uri.sql",
+    "006_tenant_identity.sql",
+    "007_tenant_evidence.sql",
+    "008_identity_row_security.sql",
+    "009_tenant_bound_credentials.sql",
+    "010_tenant_audit.sql",
+    "011_tenant_decision_rules.sql",
+    "012_tenant_assistant_conversations.sql",
+    "013_tenant_usage_metering.sql",
+    "014_tenant_usage_policy_member_reads.sql",
+)
+
+
+@pytest.fixture(scope="session")
+def assistant_rls_dsn():
+    if not DSN:
+        pytest.skip("OMNIS_TEST_DATABASE_URL is not configured")
+    psycopg = pytest.importorskip("psycopg")
+    migration_dir = Path(__file__).resolve().parents[1] / "migrations"
+    with psycopg.connect(DSN, autocommit=True) as db:
+        for name in MIGRATIONS:
+            db.execute((migration_dir / name).read_text(encoding="utf-8"))
+        db.execute(
+            f"""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{TEST_ROLE}') THEN
+                    CREATE ROLE {TEST_ROLE} NOLOGIN NOSUPERUSER NOBYPASSRLS;
+                END IF;
+            END
+            $$;
+            """
+        )
+        db.execute(f"GRANT USAGE ON SCHEMA omnis TO {TEST_ROLE}")
+        db.execute(
+            f"GRANT SELECT, INSERT, UPDATE ON "
+            f"omnis.tenant_assistant_conversation, omnis.tenant_assistant_message TO {TEST_ROLE}"
+        )
+        db.execute(f"GRANT SELECT ON omnis.tenant_membership TO {TEST_ROLE}")
+    return DSN
+
+
+def _seed_two_tenants(dsn: str, marker: str):
+    import psycopg
+
+    tenant_a, tenant_b = uuid4(), uuid4()
+    actor_a, actor_b = uuid4(), uuid4()
+    conversation_a, conversation_b = uuid4(), uuid4()
+    with psycopg.connect(dsn) as db:
+        for tenant_id, slug in ((tenant_a, "assistant-a-"), (tenant_b, "assistant-b-")):
+            db.execute(
+                "INSERT INTO omnis.tenant (tenant_id, slug, display_name) VALUES (%s, %s, %s)",
+                (tenant_id, slug + marker[:20], slug + "test"),
+            )
+        for principal_id, suffix in ((actor_a, "a"), (actor_b, "b")):
+            db.execute(
+                "INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+                (principal_id, f"assistant-{suffix}-{marker}@example.test", suffix),
+            )
+        db.execute(
+            """
+            INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status)
+            VALUES (%s, %s, 'owner', 'active'), (%s, %s, 'owner', 'active')
+            """,
+            (tenant_a, actor_a, tenant_b, actor_b),
+        )
+        db.execute(
+            """
+            INSERT INTO omnis.tenant_assistant_conversation
+                (tenant_id, conversation_id, created_by, title, message_count)
+            VALUES (%s, %s, %s, 'Tenant A private thread', 2),
+                   (%s, %s, %s, 'Tenant B private thread', 2)
+            """,
+            (tenant_a, conversation_a, actor_a, tenant_b, conversation_b, actor_b),
+        )
+        db.execute(
+            """
+            INSERT INTO omnis.tenant_assistant_message
+                (tenant_id, conversation_id, message_index, role, content, actor_id)
+            VALUES (%s, %s, 1, 'user', 'A private question', %s),
+                   (%s, %s, 2, 'assistant', 'A private answer', NULL),
+                   (%s, %s, 1, 'user', 'B private question', %s),
+                   (%s, %s, 2, 'assistant', 'B private answer', NULL)
+            """,
+            (tenant_a, conversation_a, actor_a,
+             tenant_a, conversation_a,
+             tenant_b, conversation_b, actor_b,
+             tenant_b, conversation_b),
+        )
+    return tuple(map(str, (tenant_a, actor_a, conversation_a, tenant_b, actor_b, conversation_b)))
+
+
+def _runtime_connection(dsn: str):
+    import psycopg
+
+    db = psycopg.connect(dsn)
+    db.execute(f"SET ROLE {TEST_ROLE}")
+    return db
+
+
+def test_assistant_storage_adapters_cannot_read_another_tenants_conversation(assistant_rls_dsn):
+    from omnis.tenant_assistant import TenantAssistantStore, TenantConversationError
+
+    marker = uuid4().hex
+    tenant_a, actor_a, conversation_a, tenant_b, actor_b, conversation_b = (
+        _seed_two_tenants(assistant_rls_dsn, marker)
+    )
+    store = TenantAssistantStore(
+        assistant_rls_dsn,
+        connect_factory=lambda: _runtime_connection(assistant_rls_dsn),
+    )
+
+    listed = store.list(tenant_a, actor_a)
+    assert [item["conversation_id"] for item in listed] == [conversation_a]
+
+    metadata, messages = store.history(tenant_a, actor_a, conversation_a)
+    assert metadata["conversation_id"] == conversation_a
+    assert messages == [
+        {"role": "user", "content": "A private question"},
+        {"role": "assistant", "content": "A private answer"},
+    ]
+
+    with pytest.raises(TenantConversationError, match="not found"):
+        store.history(tenant_a, actor_a, conversation_b)
+
+    # Even an explicit predicate naming tenant B cannot bypass tenant A's RLS context.
+    with _runtime_connection(assistant_rls_dsn) as db:
+        db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant_a,))
+        db.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor_a,))
+        assert db.execute(
+            "SELECT conversation_id FROM omnis.tenant_assistant_conversation "
+            "WHERE tenant_id = %s AND conversation_id = %s",
+            (tenant_b, conversation_b),
+        ).fetchall() == []
+        assert db.execute(
+            "SELECT content FROM omnis.tenant_assistant_message "
+            "WHERE tenant_id = %s AND conversation_id = %s",
+            (tenant_b, conversation_b),
+        ).fetchall() == []
+
+
+def test_assistant_rls_requires_active_membership_and_matching_tenant_context(assistant_rls_dsn):
+    import psycopg
+
+    marker = uuid4().hex
+    tenant_a, actor_a, conversation_a, _, _, _ = _seed_two_tenants(assistant_rls_dsn, marker)
+    suspended_actor = str(uuid4())
+    with psycopg.connect(assistant_rls_dsn) as db:
+        db.execute(
+            "INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+            (suspended_actor, f"suspended-{marker}@example.test", "Suspended member"),
+        )
+        db.execute(
+            """
+            INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status)
+            VALUES (%s, %s, 'reader', 'suspended')
+            """,
+            (tenant_a, suspended_actor),
+        )
+
+    with _runtime_connection(assistant_rls_dsn) as db:
+        db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant_a,))
+        db.execute("SELECT set_config('omnis.principal_id', %s, true)", (suspended_actor,))
+        assert db.execute(
+            "SELECT conversation_id FROM omnis.tenant_assistant_conversation WHERE tenant_id = %s",
+            (tenant_a,),
+        ).fetchall() == []
+
+    with _runtime_connection(assistant_rls_dsn) as db:
+        db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (str(uuid4()),))
+        db.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor_a,))
+        assert db.execute(
+            "SELECT conversation_id FROM omnis.tenant_assistant_conversation "
+            "WHERE tenant_id = %s AND conversation_id = %s",
+            (tenant_a, conversation_a),
+        ).fetchall() == []
+
+
+def test_assistant_tables_keep_forced_rls(assistant_rls_dsn):
+    import psycopg
+
+    with psycopg.connect(assistant_rls_dsn) as db:
+        flags = db.execute(
+            """
+            SELECT relname, relrowsecurity, relforcerowsecurity
+            FROM pg_class
+            WHERE oid IN (
+                'omnis.tenant_assistant_conversation'::regclass,
+                'omnis.tenant_assistant_message'::regclass
+            )
+            ORDER BY relname
+            """
+        ).fetchall()
+        assert flags == [
+            ("tenant_assistant_conversation", True, True),
+            ("tenant_assistant_message", True, True),
+        ]
