@@ -24,6 +24,7 @@ def test_health_and_sources():
     assert response.status_code == 200
     assert h["status"] == "ok" and h["sources_present"]
     assert h["evidence_ledger"]["valid"]
+    assert "sources" not in h and "import_roots" not in h
 
 
 @pytest.mark.parametrize("component", ["audit", "evidence"])

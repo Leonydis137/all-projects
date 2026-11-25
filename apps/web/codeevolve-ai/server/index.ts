@@ -3,8 +3,8 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ inflate: false, limit: "1mb" }));
+app.use(express.urlencoded({ extended: false, inflate: false, limit: "100kb", parameterLimit: 100 }));
 
 app.use((req, res, next) => {
   const start = Date.now();
