@@ -92,7 +92,10 @@ credential policy permits visibility only where its principal has a membership i
 the selected tenant. The `principal` table is a shared global identity directory
 keyed by normalized email and is intentionally not tenant-filtered at the SQL layer;
 application queries must not expose the global directory. Tenant evidence and tenant audit events also
-use forced RLS and the same transaction-local tenant context. The tenant audit table
+use forced RLS and the same transaction-local tenant context. Tenant evidence inserts
+must also match `omnis.principal_id` and an active member, principal, and tenant.
+Decision-rule inserts and updates are similarly actor-bound; deletes require an active
+member, principal, and tenant. The tenant audit table
 has no global sequence: each tenant has its own event index and predecessor chain.
 Append-only evidence, audit, assistant-message, and usage-event tables receive no
 runtime UPDATE or DELETE grant; mutable operational tables receive only the
