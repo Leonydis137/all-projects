@@ -495,7 +495,7 @@ def test_tenant_credential_inventory_is_permission_gated_and_never_returns_token
                        "reader@example.test", "Reader", "reader", TOKEN[:32])
 
     class AdminStore:
-        def list_credentials(self, tenant_id):
+        def list_credentials(self, tenant_id, actor_id):
             assert tenant_id == tenant
             return [{"credential_id": "3a2b3c4d-5e6f-4789-8abc-123456789abc",
                      "principal_id": owner.principal_id, "email": owner.email,
@@ -561,7 +561,7 @@ def test_tenant_admin_overview_is_owner_only_and_tenant_scoped(monkeypatch):
                       "admin@example.test", "Admin", "admin", TOKEN[:32])
 
     class AdminStore:
-        def overview(self, tenant_id):
+        def overview(self, tenant_id, actor_id):
             assert tenant_id == tenant
             return {"tenant_id": tenant_id, "slug": "example-tenant",
                     "display_name": "Example Tenant", "status": "active",

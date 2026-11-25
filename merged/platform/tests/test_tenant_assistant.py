@@ -88,7 +88,7 @@ def _headers():
 
 
 def test_tenant_member_can_create_and_list_own_tenant_conversations(monkeypatch):
-    client, tenant_log, global_log, store = _client()
+    client, tenant_log, global_log, store = _client(monkeypatch)
     created = client.post("/v1/tenant/assistant/conversations", headers=_headers(),
                           json={"title": "Operations review"})
     listed = client.get("/v1/tenant/assistant/conversations", headers=_headers())
@@ -101,7 +101,7 @@ def test_tenant_member_can_create_and_list_own_tenant_conversations(monkeypatch)
 
 
 def test_assistant_uses_database_history_not_client_supplied_history(monkeypatch):
-    client, tenant_log, global_log, store = _client()
+    client, tenant_log, global_log, store = _client(monkeypatch)
     store.conversations[CONVERSATION_ID] = {
         "conversation_id": CONVERSATION_ID, "title": "Private tenant context",
         "message_count": 2, "created_at": "2026-11-23T00:00:00+00:00",
@@ -134,7 +134,7 @@ def test_assistant_uses_database_history_not_client_supplied_history(monkeypatch
 
 
 def test_reader_role_can_use_assistant_without_governance_execute(monkeypatch):
-    client, _, _, _ = _client(role="reader")
+    client, _, _, _ = _client(monkeypatch, role="reader")
     async def fake_chat(message, history):
         return "Read-only member response"
     monkeypatch.setattr(api.assistant, "chat", fake_chat)
@@ -149,7 +149,7 @@ def test_reader_role_can_use_assistant_without_governance_execute(monkeypatch):
 
 
 def test_conversation_id_from_another_tenant_is_not_found(monkeypatch):
-    client, _, _, _ = _client()
+    client, _, _, _ = _client(monkeypatch)
     response = client.post(
         "/v1/tenant/assistant/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/messages",
         headers=_headers(), json={"message": "Hello"},
@@ -158,7 +158,7 @@ def test_conversation_id_from_another_tenant_is_not_found(monkeypatch):
 
 
 def test_assistant_provider_failure_does_not_persist_exchange(monkeypatch):
-    client, _, _, store = _client()
+    client, _, _, store = _client(monkeypatch)
     store.conversations[CONVERSATION_ID] = {
         "conversation_id": CONVERSATION_ID, "title": "Failure test",
         "message_count": 0, "created_at": "2026-11-23T00:00:00+00:00",
@@ -179,7 +179,7 @@ def test_assistant_provider_failure_does_not_persist_exchange(monkeypatch):
 
 
 def test_assistant_requests_are_metered_per_tenant(monkeypatch):
-    client, _, _, store = _client()
+    client, _, _, store = _client(monkeypatch)
     store.conversations[CONVERSATION_ID] = {
         "conversation_id": CONVERSATION_ID, "title": "Metered conversation",
         "message_count": 0, "created_at": "2026-11-23T00:00:00+00:00",
@@ -198,7 +198,7 @@ def test_assistant_requests_are_metered_per_tenant(monkeypatch):
 
 
 def test_assistant_rate_limit_returns_429_without_calling_provider(monkeypatch):
-    client, _, _, store = _client()
+    client, _, _, store = _client(monkeypatch)
     store.conversations[CONVERSATION_ID] = {
         "conversation_id": CONVERSATION_ID, "title": "Limited conversation",
         "message_count": 0, "created_at": "2026-11-23T00:00:00+00:00",
@@ -219,7 +219,7 @@ def test_assistant_rate_limit_returns_429_without_calling_provider(monkeypatch):
 
 
 def test_monthly_quota_rejection_returns_429_before_provider(monkeypatch):
-    client, _, _, store = _client()
+    client, _, _, store = _client(monkeypatch)
     store.conversations[CONVERSATION_ID] = {
         "conversation_id": CONVERSATION_ID, "title": "Quota test",
         "message_count": 0, "created_at": "2026-11-23T00:00:00+00:00",
@@ -239,7 +239,7 @@ def test_monthly_quota_rejection_returns_429_before_provider(monkeypatch):
 
 
 def test_tenant_usage_summary_is_available_to_reader(monkeypatch):
-    client, _, _, _ = _client(role="reader")
+    client, _, _, _ = _client(monkeypatch, role="reader")
     response = client.get("/v1/tenant/usage", headers=_headers())
     assert response.status_code == 200
     assert response.json()["period"] == "calendar_month"
@@ -248,7 +248,7 @@ def test_tenant_usage_summary_is_available_to_reader(monkeypatch):
 
 
 def test_tenant_member_can_read_conversation_history(monkeypatch):
-    client, _, _, store = _client()
+    client, _, _, store = _client(monkeypatch)
     store.conversations[CONVERSATION_ID] = {
         "conversation_id": CONVERSATION_ID, "title": "History view",
         "message_count": 2, "created_at": "2026-11-23T00:00:00+00:00",
@@ -268,7 +268,7 @@ def test_tenant_member_can_read_conversation_history(monkeypatch):
 
 
 def test_conversation_history_from_another_tenant_is_not_found(monkeypatch):
-    client, _, _, _ = _client()
+    client, _, _, _ = _client(monkeypatch)
     response = client.get(
         "/v1/tenant/assistant/conversations/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
         headers=_headers(),

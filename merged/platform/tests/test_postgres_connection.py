@@ -43,7 +43,7 @@ def test_remote_hostaddr_requires_a_verifiable_hostname():
 
 def test_hostless_libpq_environment_overrides_are_rejected(monkeypatch):
     monkeypatch.setenv("PGHOST", "db.remote.example")
-    with pytest.raises(ValueError, match="hostless"):
+    with pytest.raises(ValueError, match="PGHOST"):
         _sslmode_for_params({})
 
 
