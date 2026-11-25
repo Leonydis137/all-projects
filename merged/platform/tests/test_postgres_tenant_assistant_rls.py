@@ -133,6 +133,15 @@ def _runtime_connection(dsn: str):
     return db
 
 
+def _runtime_dict_connection(dsn: str):
+    import psycopg
+    from psycopg.rows import dict_row
+
+    db = psycopg.connect(dsn, row_factory=dict_row)
+    db.execute(f"SET ROLE {TEST_ROLE}")
+    return db
+
+
 def test_assistant_storage_adapters_cannot_read_another_tenants_conversation(assistant_rls_dsn):
     from omnis.tenant_assistant import TenantAssistantStore, TenantConversationError
 
