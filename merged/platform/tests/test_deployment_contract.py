@@ -36,3 +36,11 @@ def test_container_defaults_to_non_root_and_loopback_publishing():
     assert "read_only: true" in compose
     assert "cap_drop:" in compose and "- ALL" in compose
     assert "no-new-privileges:true" in compose
+
+def test_evidence_postgres_fixture_applies_all_migrations_in_order():
+    fixture = (PLATFORM / "tests" / "test_postgres_evidence.py").read_text(encoding="utf-8")
+    migration_files = sorted(
+        path.name for path in MIGRATIONS.glob("[0-9][0-9][0-9]_*.sql")
+    )
+    positions = [fixture.index(f'"{filename}"') for filename in migration_files]
+    assert positions == sorted(positions), "PostgreSQL fixture migrations must run in numeric order"

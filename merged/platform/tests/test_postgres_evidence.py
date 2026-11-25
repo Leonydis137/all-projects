@@ -21,20 +21,28 @@ def postgres_dsn():
         pytest.skip("OMNIS_TEST_DATABASE_URL is not configured")
     psycopg = pytest.importorskip("psycopg")
     migration_dir = Path(__file__).resolve().parents[1] / "migrations"
+    migrations = (
+        "001_evidence_and_audit.sql",
+        "002_ledger_immutability.sql",
+        "003_audit_event_canonical_payload.sql",
+        "004_evidence_idempotency.sql",
+        "005_case_insensitive_source_uri.sql",
+        "006_tenant_identity.sql",
+        "007_tenant_evidence.sql",
+        "008_identity_row_security.sql",
+        "009_tenant_bound_credentials.sql",
+        "010_tenant_audit.sql",
+        "011_tenant_decision_rules.sql",
+        "012_tenant_assistant_conversations.sql",
+        "013_tenant_usage_metering.sql",
+        "014_tenant_usage_policy_member_reads.sql",
+        "015_tenant_audit_active_actor.sql",
+        "016_tenant_evidence_and_rules_active_actor.sql",
+        "017_tenant_lifecycle_storage_rls.sql",
+    )
     with psycopg.connect(DSN, autocommit=True) as db:
-        db.execute((migration_dir / "001_evidence_and_audit.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "002_ledger_immutability.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "003_audit_event_canonical_payload.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "004_evidence_idempotency.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "005_case_insensitive_source_uri.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "006_tenant_identity.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "007_tenant_evidence.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "008_identity_row_security.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "009_tenant_bound_credentials.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "010_tenant_audit.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "011_tenant_decision_rules.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "015_tenant_audit_active_actor.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "016_tenant_evidence_and_rules_active_actor.sql").read_text(encoding="utf-8"))
+        for name in migrations:
+            db.execute((migration_dir / name).read_text(encoding="utf-8"))
     return DSN
 
 
