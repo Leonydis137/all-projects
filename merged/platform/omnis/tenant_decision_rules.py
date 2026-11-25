@@ -64,10 +64,10 @@ class TenantDecisionRuleStore:
                 "action": action.strip(), "priority": priority}
 
     @staticmethod
-    def _scope(cur, tenant: str, actor: str | None = None) -> None:
+    def _scope(cur, tenant: str, principal: str | None = None) -> None:
         cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant,))
-        if actor is not None:
-            cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor,))
+        if principal is not None:
+            cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (principal,))
 
     @staticmethod
     def _decode(row: dict[str, Any]) -> dict[str, Any]:

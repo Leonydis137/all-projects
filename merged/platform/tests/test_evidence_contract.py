@@ -129,6 +129,8 @@ def test_api_auth_rejects_missing_or_wrong_bearer_token(monkeypatch):
     with pytest.raises(HTTPException) as wrong:
         api.auth("Bearer wrong")
     assert wrong.value.status_code == 401
+    with pytest.raises(HTTPException):
+        api.auth("Bearer test-secret ")
     assert api.auth("Bearer test-secret") is None
 
 

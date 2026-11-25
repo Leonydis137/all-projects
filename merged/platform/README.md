@@ -31,8 +31,9 @@ uvicorn omnis.api:app --host 127.0.0.1 --port 8080
 
 Set `OMNIS_API_TOKEN` to protect API routes. Without `OMNIS_DATABASE_URL`, OMNIS uses
 the persistent SQLite database selected by `OMNIS_EVIDENCE_DB`. To use PostgreSQL,
-apply migrations 001 through 016 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
-DSN for a dedicated runtime role with schema USAGE and SELECT/INSERT privileges only.
+apply migrations 001 through 017 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
+DSN for a dedicated non-owner runtime role with only the table- and column-level
+privileges documented in `migrations/README.md`.
 Remote connections require certificate and hostname verification (`sslmode=verify-full`);
 configure the provider CA as the libpq root certificate. The runtime never runs schema
 migrations automatically. Set `OMNIS_DB_VERIFY_TIMEOUT_MS` to control the full-chain
@@ -65,6 +66,34 @@ Hash integrity does not prove source authenticity or actor identity and cannot
 independently detect deletion of a final suffix without an external checkpoint.
 Existing SQLite evidence and in-memory audit history are not automatically migrated;
 export, import, and verify historical records before switching storage.
+
+
+## Docker deployment
+
+Use Docker Compose v2.24 or newer (the compose file uses optional env-file support):
+
+```bash
+cd merged/platform
+cp .env.example .env
+docker compose config
+docker compose up --build -d
+docker compose ps
+curl http://127.0.0.1:8080/health
+```
+
+The container runs as an unprivileged user, stores its SQLite evidence database in
+the persistent `omnis-data` volume, and uses a read-only root filesystem with
+Linux capabilities dropped. Port 8080 is published on host loopback by default;
+set `OMNIS_BIND_ADDRESS=0.0.0.0` in `.env` only when direct network exposure is
+intentional and protected by an appropriate firewall/reverse proxy. The container
+health check calls `/health`; inspect `docker compose logs -f omnis` for startup
+or readiness failures. `docker compose down` retains the named data volume;
+`docker compose down -v` deletes it.
+
+Compose does not create a PostgreSQL server. Tenant identity, tenant storage, and
+tenant assistant features require an external PostgreSQL database with migrations
+001-017 applied, a dedicated non-owner runtime role, and the documented grants.
+Do not put the owner/provisioning DSN in `OMNIS_DATABASE_URL`.
 
 ## Controlled source acquisition
 

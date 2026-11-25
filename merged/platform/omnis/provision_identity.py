@@ -73,6 +73,7 @@ def main() -> int:
                        VALUES (%s, %s, 'owner')""",
                     (tenant_id, principal_id),
                 )
+                cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (principal_id,))
                 cur.execute(
                     """INSERT INTO omnis.api_credential
                        (tenant_id, principal_id, token_prefix, token_digest, label)
