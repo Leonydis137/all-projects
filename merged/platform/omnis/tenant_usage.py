@@ -52,6 +52,19 @@ class TenantUsageStore:
                     cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (principal,))
                     cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))",
                                 (f"omnis.tenant_usage:{tenant}",))
+                    # now() is fixed at transaction start. A request can wait on
+                    # the tenant lock across a minute/month boundary, so capture
+                    # wall-clock time only after acquiring the lock and use that
+                    # single decision timestamp for every metering boundary.
+                    cur.execute("SELECT clock_timestamp() AS decision_at")
+                    decision_at = cur.fetchone()["decision_at"]
+                    cur.execute(
+                        """SELECT date_trunc('minute', %s) AS window_start,
+                                  date_trunc('month', %s) AS month_start""",
+                        (decision_at, decision_at))
+                    boundaries = cur.fetchone()
+                    window = boundaries["window_start"]
+                    month_start = boundaries["month_start"]
                     cur.execute(
                         """SELECT monthly_request_limit FROM omnis.tenant_usage_policy
                            WHERE tenant_id = %s""", (tenant,))
@@ -59,11 +72,8 @@ class TenantUsageStore:
                     cur.execute(
                         """SELECT count(*) AS used FROM omnis.tenant_usage_event
                            WHERE tenant_id = %s AND outcome = 'accepted'
-                             AND occurred_at >= date_trunc('month', now())""", (tenant,))
+                             AND occurred_at >= %s""", (tenant, month_start))
                     used = int(cur.fetchone()["used"])
-                    cur.execute(
-                        """SELECT date_trunc('minute', now()) AS window_start""")
-                    window = cur.fetchone()["window_start"]
                     cur.execute(
                         """SELECT request_count FROM omnis.tenant_usage_minute
                            WHERE tenant_id = %s AND window_start = %s FOR UPDATE""",
@@ -80,8 +90,8 @@ class TenantUsageStore:
                     if bucket:
                         cur.execute(
                             """UPDATE omnis.tenant_usage_minute
-                               SET request_count = request_count + 1, updated_at = now()
-                               WHERE tenant_id = %s AND window_start = %s""", (tenant, window))
+                               SET request_count = request_count + 1, updated_at = %s
+                               WHERE tenant_id = %s AND window_start = %s""", (decision_at, tenant, window))
                     else:
                         cur.execute(
                             """INSERT INTO omnis.tenant_usage_minute
@@ -89,10 +99,10 @@ class TenantUsageStore:
                             (tenant, window))
                     cur.execute(
                         """INSERT INTO omnis.tenant_usage_event
-                           (tenant_id, principal_id, operation, units, outcome)
-                           VALUES (%s, %s, %s, 1, %s)
+                           (tenant_id, principal_id, operation, units, outcome, occurred_at)
+                           VALUES (%s, %s, %s, 1, %s, %s)
                            RETURNING usage_id, occurred_at""",
-                        (tenant, principal, operation, outcome))
+                        (tenant, principal, operation, outcome, decision_at))
                     event = cur.fetchone()
                     audit_log.record_in_transaction(
                         db, "tenant.usage.recorded",
