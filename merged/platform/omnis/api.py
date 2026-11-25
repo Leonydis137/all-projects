@@ -1,6 +1,7 @@
 # Author: Juan-Louw Greyling <juanlouw.greyling@gmail.com>
 """OMNIS gateway: one FastAPI app exposing the features of every merged project."""
 import os
+import secrets
 import threading
 import time
 from pathlib import Path
@@ -166,7 +167,10 @@ def auth(authorization: Optional[str] = Header(default=None)) -> None:
     # and their storage adapters enforce tenant isolation.
     if not config.API_TOKEN:
         raise HTTPException(503, "API authentication is not configured")
-    if authorization != f"Bearer {config.API_TOKEN}":
+    expected = f"Bearer {config.API_TOKEN}"
+    if not authorization or not secrets.compare_digest(
+        authorization.encode("utf-8"), expected.encode("utf-8")
+    ):
         raise HTTPException(401, "missing or invalid bearer token")
 
 
@@ -341,8 +345,7 @@ def health():
 
         healthy = audit_valid and evidence_status["valid"]
         payload = {"status": "ok" if healthy else "degraded", "version": __version__,
-                   "sources": str(config.SOURCES), "sources_present": config.SOURCES.is_dir(),
-                   "import_roots": sources.wire() or "already wired", "audit_chain_valid": audit_valid,
+                   "sources_present": config.SOURCES.is_dir(), "audit_chain_valid": audit_valid,
                    "evidence_ledger": evidence_status, "assistant_configured": bool(config.ANTHROPIC_API_KEY)}
         status_code = 200 if healthy else 503
         _health_cache["checked_at"] = time.monotonic()
