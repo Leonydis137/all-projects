@@ -33,6 +33,7 @@ def postgres_dsn():
         db.execute((migration_dir / "009_tenant_bound_credentials.sql").read_text(encoding="utf-8"))
         db.execute((migration_dir / "010_tenant_audit.sql").read_text(encoding="utf-8"))
         db.execute((migration_dir / "015_tenant_audit_active_actor.sql").read_text(encoding="utf-8"))
+        db.execute((migration_dir / "016_tenant_evidence_active_actor.sql").read_text(encoding="utf-8"))
     return DSN
 
 

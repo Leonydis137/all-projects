@@ -30,6 +30,7 @@ MIGRATIONS = (
     "013_tenant_usage_metering.sql",
     "014_tenant_usage_policy_member_reads.sql",
     "015_tenant_audit_active_actor.sql",
+    "016_tenant_evidence_active_actor.sql",
 )
 
 
@@ -62,6 +63,8 @@ def assistant_rls_dsn():
             f"GRANT SELECT ON omnis.tenant, omnis.principal, omnis.tenant_membership TO {TEST_ROLE}"
         )
         db.execute(f"GRANT SELECT, INSERT ON omnis.tenant_audit_event TO {TEST_ROLE}")
+        db.execute(f"GRANT SELECT, INSERT ON omnis.tenant_evidence TO {TEST_ROLE}")
+        db.execute(f"GRANT USAGE, SELECT ON SEQUENCE omnis.tenant_evidence_sequence_seq TO {TEST_ROLE}")
     return DSN
 
 
@@ -119,6 +122,15 @@ def _runtime_connection(dsn: str):
     import psycopg
 
     db = psycopg.connect(dsn)
+    db.execute(f"SET ROLE {TEST_ROLE}")
+    return db
+
+
+def _runtime_dict_connection(dsn: str):
+    import psycopg
+    from psycopg.rows import dict_row
+
+    db = psycopg.connect(dsn, row_factory=dict_row)
     db.execute(f"SET ROLE {TEST_ROLE}")
     return db
 
@@ -312,3 +324,105 @@ def test_tenant_audit_inserts_require_matching_active_actor_and_tenant(assistant
     with pytest.raises(psycopg.Error):
         audit.record("tenant.audit.suspended_tenant", {"tenant_id": str(suspended_tenant)},
                      actor=str(suspended_tenant_actor))
+
+
+def test_tenant_evidence_inserts_require_matching_active_actor_and_tenant(assistant_rls_dsn):
+    import psycopg
+    from omnis.postgres_tenant_audit import PostgresTenantAuditLog
+    from omnis.postgres_tenant_evidence import PostgresTenantEvidenceLedger
+
+    marker = uuid4().hex
+    tenant_a, actor_a, _, _, _, _ = _seed_two_tenants(assistant_rls_dsn, marker)
+    suspended_actor, disabled_actor, spoofed_actor = uuid4(), uuid4(), uuid4()
+    suspended_tenant, suspended_tenant_actor = uuid4(), uuid4()
+
+    with psycopg.connect(assistant_rls_dsn) as db:
+        db.execute(
+            "INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+            (suspended_actor, f"evidence-suspended-{marker}@example.test", "Suspended actor"),
+        )
+        db.execute(
+            "INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) "
+            "VALUES (%s, %s, 'reader', 'suspended')",
+            (tenant_a, suspended_actor),
+        )
+        db.execute(
+            "INSERT INTO omnis.principal (principal_id, email, display_name, status) "
+            "VALUES (%s, %s, %s, 'disabled')",
+            (disabled_actor, f"evidence-disabled-{marker}@example.test", "Disabled actor"),
+        )
+        db.execute(
+            "INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) "
+            "VALUES (%s, %s, 'reader', 'active')",
+            (tenant_a, disabled_actor),
+        )
+        db.execute(
+            "INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+            (spoofed_actor, f"evidence-spoofed-{marker}@example.test", "Alternate active actor"),
+        )
+        db.execute(
+            "INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) "
+            "VALUES (%s, %s, 'reader', 'active')",
+            (tenant_a, spoofed_actor),
+        )
+        db.execute(
+            "INSERT INTO omnis.tenant (tenant_id, slug, display_name, status) "
+            "VALUES (%s, %s, %s, 'suspended')",
+            (suspended_tenant, "evidence-suspended-" + marker[:20], "Suspended evidence tenant"),
+        )
+        db.execute(
+            "INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+            (suspended_tenant_actor, f"evidence-tenant-actor-{marker}@example.test", "Tenant actor"),
+        )
+        db.execute(
+            "INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) "
+            "VALUES (%s, %s, 'owner', 'active')",
+            (suspended_tenant, suspended_tenant_actor),
+        )
+
+    audit = PostgresTenantAuditLog(
+        assistant_rls_dsn,
+        connect_factory=lambda: _runtime_dict_connection(assistant_rls_dsn),
+    )
+    ledger = PostgresTenantEvidenceLedger(
+        assistant_rls_dsn,
+        connect_factory=lambda: _runtime_dict_connection(assistant_rls_dsn),
+    )
+    accepted = ledger.append_with_audit(
+        {
+            "source_uri": f"https://example.org/evidence/{marker}",
+            "content_sha256": "a" * 64,
+            "acquired_at": "2026-11-22T10:00:00Z",
+            "acquisition_method": "integration-test-fetch",
+            "license": "unknown",
+            "submitted_by": "ignored-client-value",
+        },
+        tenant_a, actor_a, audit,
+    )
+    assert accepted["submitted_by"] == actor_a
+
+    def assert_insert_rejected(tenant_id, context_actor, submitted_by):
+        with _runtime_connection(assistant_rls_dsn) as db:
+            db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (str(tenant_id),))
+            db.execute("SELECT set_config('omnis.principal_id', %s, true)", (str(context_actor),))
+            with pytest.raises(psycopg.Error):
+                db.execute(
+                    """INSERT INTO omnis.tenant_evidence
+                       (tenant_id, source_uri, content_sha256, acquired_at, acquisition_method,
+                        declared_license, submitted_by, record_json, previous_hash, record_hash)
+                       VALUES (%s, 'https://example.org/forbidden', %s, now(), 'test',
+                               'unknown', %s, '{}'::jsonb, %s, %s)""",
+                    (tenant_id, "b" * 64, str(submitted_by), "0" * 64, "f" * 64),
+                )
+
+    assert_insert_rejected(tenant_a, actor_a, spoofed_actor)
+    assert_insert_rejected(tenant_a, suspended_actor, suspended_actor)
+    assert_insert_rejected(tenant_a, disabled_actor, disabled_actor)
+    assert_insert_rejected(suspended_tenant, suspended_tenant_actor, suspended_tenant_actor)
+
+    with psycopg.connect(assistant_rls_dsn) as db:
+        flags = db.execute(
+            "SELECT relrowsecurity, relforcerowsecurity "
+            "FROM pg_class WHERE oid = 'omnis.tenant_evidence'::regclass"
+        ).fetchone()
+        assert flags == (True, True)

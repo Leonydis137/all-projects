@@ -116,6 +116,7 @@ class PostgresTenantEvidenceLedger:
             with db.cursor() as cur:
                 cur.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
                 self._scope(cur, tenant)
+                cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor,))
                 cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))",
                             (f"omnis.tenant_evidence:{tenant}",))
                 previous_hash = self._head_hash(cur, tenant)
