@@ -31,6 +31,19 @@ MIGRATIONS = (
 )
 
 
+def test_migration_manifest_is_complete_and_unambiguous():
+    """Reject duplicate migration versions and SQL files omitted from the test chain."""
+    migration_dir = Path(__file__).resolve().parents[1] / "migrations"
+    actual = sorted(path.name for path in migration_dir.glob("*.sql"))
+    versions = [name.split("_", 1)[0] for name in actual]
+
+    assert len(versions) == len(set(versions)), "migration version numbers must be unique"
+    assert actual == list(MIGRATIONS), (
+        "the PostgreSQL integration manifest must include every SQL migration exactly once; "
+        f"untracked or missing migrations: {sorted(set(actual) ^ set(MIGRATIONS))}"
+    )
+
+
 @pytest.fixture(scope="session")
 def postgres_dsn():
     if not DSN:
