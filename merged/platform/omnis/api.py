@@ -741,7 +741,7 @@ def list_tenant_decision_rules(principal: Principal = Depends(tenant_identity)) 
     if not principal.allows("decision_rules:read"):
         raise HTTPException(403, "tenant role lacks decision_rules:read")
     try:
-        return {"rules": _tenant_rule_store().list_rules(principal.tenant_id, include_disabled=True)}
+        return {"rules": _tenant_rule_store().list_rules(principal.tenant_id, include_disabled=True, actor_id=principal.principal_id)}
     except TenantRuleUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
 
@@ -816,7 +816,7 @@ def tenant_decide(body: DecideIn, principal: Principal = Depends(tenant_identity
     _tenant_operation(principal, "tenant.decision", body.attributes, body.context)
     decision_engine = default_engine()
     if tenant_decision_rules is not None:
-        for stored in tenant_decision_rules.list_rules(principal.tenant_id):
+        for stored in tenant_decision_rules.list_rules(principal.tenant_id, actor_id=principal.principal_id):
             decision_engine.add_rule(
                 Rule(stored["name"], stored["field"], stored["op"], stored["value"],
                      stored["action"], stored["priority"])

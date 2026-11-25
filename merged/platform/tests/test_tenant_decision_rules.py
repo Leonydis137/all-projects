@@ -13,7 +13,7 @@ TOKEN = "omnis_live_" + "A" * 48
 class FakeRuleStore:
     def __init__(self):
         self.rules = []
-    def list_rules(self, tenant_id, include_disabled=False):
+    def list_rules(self, tenant_id, include_disabled=False, actor_id=None):
         assert tenant_id == TENANT_ID
         return list(self.rules)
     def create_rule(self, tenant_id, actor_id, rule, audit_log):

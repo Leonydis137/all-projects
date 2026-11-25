@@ -78,11 +78,13 @@ class TenantDecisionRuleStore:
                 "created_by": str(row["created_by"]), "updated_by": str(row["updated_by"]),
                 "created_at": row["created_at"].isoformat(), "updated_at": row["updated_at"].isoformat()}
 
-    def list_rules(self, tenant_id: str, include_disabled: bool = False) -> list[dict[str, Any]]:
+    def list_rules(self, tenant_id: str, include_disabled: bool = False,
+                   actor_id: str | None = None) -> list[dict[str, Any]]:
         tenant = self._uuid(tenant_id, "tenant_id")
+        actor = self._uuid(actor_id, "actor_id") if actor_id is not None else None
         with self._connect() as db:
             with db.cursor() as cur:
-                self._scope(cur, tenant)
+                self._scope(cur, tenant, actor)
                 cur.execute(
                     """SELECT rule_id, name, field, comparison, value, action, priority,
                               enabled, created_by, updated_by, created_at, updated_at
@@ -159,10 +161,10 @@ class TenantDecisionRuleStore:
                     {"tenant_id": tenant, "rule_id": identifier, "name": row["name"]}, actor=actor)
         return {"tenant_id": tenant, "rule_id": identifier, "deleted": True}
 
-    def engine(self, tenant_id: str):
+    def engine(self, tenant_id: str, actor_id: str | None = None):
         from .decision import DecisionEngine
         engine = DecisionEngine()
-        for row in self.list_rules(tenant_id):
+        for row in self.list_rules(tenant_id, actor_id=actor_id):
             engine.add_rule(Rule(row["name"], row["field"], row["op"], row["value"],
                                  row["action"], row["priority"]))
         return engine

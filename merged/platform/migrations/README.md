@@ -17,6 +17,7 @@ Apply migrations in numeric order using a database-owner or migration role befor
 13. `013_tenant_usage_metering.sql` adds tenant usage events, rolling-minute counters, and configurable monthly request quotas with forced RLS.
 14. `014_tenant_usage_policy_member_reads.sql` fixes quota-policy visibility so every active member can read the tenant's configured limit; policy ownership remains audit metadata, not a read restriction.
 15. `015_tenant_audit_active_actor.sql` requires every tenant audit insert to be attributed to the transaction's authenticated principal, with active membership, principal, and tenant status.
+16. `016_tenant_storage_active_actor.sql` binds tenant evidence inserts and decision-rule mutations to the transaction's active principal.
 
 Example:
 
@@ -36,13 +37,14 @@ psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 012_tenant_assistant_conversati
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 013_tenant_usage_metering.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 014_tenant_usage_policy_member_reads.sql
 psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 015_tenant_audit_active_actor.sql
+psql "$OMNIS_DATABASE_URL" -v ON_ERROR_STOP=1 -f 016_tenant_storage_active_actor.sql
 ```
 
 Migration 004 intentionally contains `CREATE INDEX CONCURRENTLY` and must not be wrapped in an explicit transaction. If an interrupted concurrent index build leaves an invalid index, inspect `pg_index.indisvalid`, drop that invalid index with `DROP INDEX CONCURRENTLY omnis.evidence_idempotency_key_uq`, and rerun migration 004.
 
 Migration 005 wraps its constraint replacement in one transaction. If validation finds legacy rows with non-HTTP(S) URIs, the transaction rolls back and the original constraint remains in place; clean those rows before retrying.
 
-Set `OMNIS_DATABASE_URL` only after all fifteen migrations have completed. This switches both evidence and audit storage from their local fallback implementations to PostgreSQL. During a rolling deployment, drain old application instances before relying on the durable audit chain; older instances do not write to PostgreSQL.
+Set `OMNIS_DATABASE_URL` only after all sixteen migrations have completed. This switches both evidence and audit storage from their local fallback implementations to PostgreSQL. During a rolling deployment, drain old application instances before relying on the durable audit chain; older instances do not write to PostgreSQL.
 
 ## Application-role provisioning
 
@@ -60,7 +62,7 @@ Do not grant table ownership, UPDATE, DELETE, TRUNCATE, schema CREATE, or migrat
 
 Migration 003 leaves `event_json` nullable to permit schema rollout over databases with existing audit rows. Existing rows without canonical bodies deliberately fail closed during full audit verification; reconcile or migrate those records before enabling PostgreSQL audit mode.
 
-After migrations 006-009, grant the non-owner runtime role only the operations required by the application:
+After migrations 006-016, grant the non-owner runtime role only the operations required by the application:
 
 ```sql
 GRANT SELECT ON omnis.tenant TO omnis_app;
@@ -86,7 +88,7 @@ credential policy permits visibility only where its principal has a membership i
 the selected tenant. The `principal` table is a shared global identity directory
 keyed by normalized email and is intentionally not tenant-filtered at the SQL layer;
 application queries must not expose the global directory. Tenant evidence and tenant audit events also
-use forced RLS and the same transaction-local tenant context. The tenant audit table
+use forced RLS and the same transaction-local tenant context. Migration 016 additionally requires evidence inserts to match the transaction-local principal and active membership, and binds decision-rule INSERT/UPDATE attribution to that principal while requiring an active member for rule reads and deletes. The tenant audit table
 has no global sequence: each tenant has its own event index and predecessor chain.
 The runtime role receives SELECT/INSERT only; UPDATE, DELETE, and TRUNCATE are blocked
 by privileges and append-only triggers. The provisioning

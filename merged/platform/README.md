@@ -31,7 +31,7 @@ uvicorn omnis.api:app --host 127.0.0.1 --port 8080
 
 Set `OMNIS_API_TOKEN` to protect API routes. Without `OMNIS_DATABASE_URL`, OMNIS uses
 the persistent SQLite database selected by `OMNIS_EVIDENCE_DB`. To use PostgreSQL,
-apply migrations 001 through 015 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
+apply migrations 001 through 016 in order using a database-owner/migration role, then set `OMNIS_DATABASE_URL` to a PostgreSQL
 DSN for a dedicated runtime role with schema USAGE and SELECT/INSERT privileges only.
 Remote connections require certificate and hostname verification (`sslmode=verify-full`);
 configure the provider CA as the libpq root certificate. The runtime never runs schema
@@ -140,7 +140,9 @@ Send the tenant UUID in `X-OMNIS-Tenant`. The role must include
 `evidence:write` for append or `evidence:read` for list/verify. The API assigns
 `submitted_by` from the authenticated principal; clients cannot spoof the actor.
 The table has forced PostgreSQL row-level security, tenant-specific idempotency
-keys, independent hash chains, and append-only triggers. Each operation records
+keys, independent hash chains, and append-only triggers. Migration 016 binds each
+new evidence row's `submitted_by` to the transaction's authenticated principal and
+requires active membership, principal, and tenant status. Each operation records
 the authenticated principal as the audit actor.
 
 The existing global `/v1/evidence` routes remain on the legacy shared-token path.
