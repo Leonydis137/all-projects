@@ -42,8 +42,10 @@ class PostgresTenantEvidenceLedger:
             raise EvidenceValidationError("tenant_id must be a UUID") from exc
 
     @staticmethod
-    def _scope(cur, tenant_id: str) -> None:
+    def _scope(cur, tenant_id: str, principal_id: str | None = None) -> None:
         cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant_id,))
+        if principal_id is not None:
+            cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (principal_id,))
 
     @staticmethod
     def _decode(row: dict[str, Any], tenant_id: str) -> dict[str, Any]:
@@ -115,7 +117,7 @@ class PostgresTenantEvidenceLedger:
         with self._connect() as db:
             with db.cursor() as cur:
                 cur.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
-                self._scope(cur, tenant)
+                self._scope(cur, tenant, actor)
                 cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))",
                             (f"omnis.tenant_evidence:{tenant}",))
                 previous_hash = self._head_hash(cur, tenant)
