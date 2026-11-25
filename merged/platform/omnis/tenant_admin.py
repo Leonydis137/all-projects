@@ -48,6 +48,12 @@ class TenantAdminStore:
             raise TenantAdminError("identifier must be a UUID") from exc
 
     @staticmethod
+    def _require_owner_assignment(role: str, actor_role: str) -> None:
+        """Only an existing tenant owner may grant or promote the owner role."""
+        if role == "owner" and actor_role != "owner":
+            raise TenantAdminError("only an owner may assign the owner role")
+
+    @staticmethod
     def _lock_tenant(cur, tenant: str) -> None:
         cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant,))
         cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"omnis.tenant_admin:{tenant}",))
@@ -131,6 +137,7 @@ class TenantAdminStore:
             raise TenantAdminError("display_name must contain 1-160 characters")
         if role not in {"owner", "admin", "operator", "analyst", "reader"}:
             raise TenantAdminError("role is invalid")
+        self._require_owner_assignment(role, actor_role)
         with self._connect() as db:
             with db.cursor() as cur:
                 self._lock_tenant(cur, tenant)
@@ -194,6 +201,7 @@ class TenantAdminStore:
         tenant, member, actor = self._uuid(tenant_id), self._uuid(principal_id), self._uuid(actor_id)
         if role not in {"owner", "admin", "operator", "analyst", "reader"}:
             raise TenantAdminError("role is invalid")
+        self._require_owner_assignment(role, actor_role)
         if status not in {"active", "suspended"}:
             raise TenantAdminError("status is invalid")
         with self._connect() as db:

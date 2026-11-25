@@ -57,6 +57,13 @@ _health_lock = threading.Lock()
 _health_cache: dict[str, Any] = {"checked_at": 0.0, "response": None}
 
 
+def _require_tenant_audit() -> PostgresTenantAuditLog:
+    """Return the tenant audit chain or fail closed; never substitute the global log."""
+    if tenant_audit is None:
+        raise HTTPException(503, "PostgreSQL tenant audit is not configured")
+    return tenant_audit
+
+
 @app.middleware("http")
 async def audit_api_requests(request: Request, call_next):
     """Persist a request-start event before dispatch; never run an API action unaudited.
@@ -112,11 +119,15 @@ async def audit_api_requests(request: Request, call_next):
 
     event = {"method": request.method, "path": path}
     actor = principal.principal_id if principal is not None else None
-    # Authenticated tenant traffic is recorded only in that tenant's isolated chain.
-    # The legacy global chain remains the operational log for non-tenant requests.
-    request_audit = tenant_audit if principal is not None and tenant_audit is not None else audit
+    # Authenticated tenant traffic must never fall back to the global audit chain.
+    # Fail before dispatch if its isolated audit store is unavailable.
     if principal is not None:
+        if tenant_audit is None:
+            return JSONResponse(status_code=503, content={"detail": "tenant_audit_unavailable"})
+        request_audit = tenant_audit
         event["tenant_id"] = principal.tenant_id
+    else:
+        request_audit = audit
     try:
         if actor:
             request_audit.record("http.request.started", event, actor=actor)
@@ -172,16 +183,17 @@ def tenant_identity(request: Request) -> Principal:
 def gated(kind: str, attrs: Optional[dict] = None, actor: Optional[str] = None,
           tenant_id: Optional[str] = None, context: Optional[dict] = None) -> dict:
     """Run an action through COVENANT and append its decision to the correct audit chain."""
+    request_audit = _require_tenant_audit() if tenant_id else audit
     action = governance.stamp({**(attrs or {}), "type": kind}, mission="PRIMARY_MISSION", auditable=True, data_provenance=True)
     verdict = governance.evaluate(action, context)
     payload = {"action": kind, "allowed": verdict["allowed"], "violations": verdict["violations"]}
     if tenant_id:
         payload["tenant_id"] = tenant_id
-        (tenant_audit or audit).record("govern", payload, actor=actor)
+        request_audit.record("govern", payload, actor=actor)
     elif actor:
-        audit.record("govern", payload, actor=actor)
+        request_audit.record("govern", payload, actor=actor)
     else:
-        audit.record("govern", payload)
+        request_audit.record("govern", payload)
     if not verdict["allowed"]:
         raise HTTPException(403, {"blocked_by": "covenant", "violations": verdict["violations"]})
     return verdict
@@ -343,7 +355,7 @@ def health():
 @app.get("/v1/identity/me")
 def get_identity(principal: Principal = Depends(tenant_identity)) -> dict:
     """Return the authenticated principal and permissions for the selected tenant."""
-    (tenant_audit or audit).record("identity.access", {"tenant_id": principal.tenant_id,
+    _require_tenant_audit().record("identity.access", {"tenant_id": principal.tenant_id,
                                       "principal_id": principal.principal_id},
                  actor=principal.principal_id)
     return {
@@ -369,7 +381,7 @@ def append_tenant_evidence(
     try:
         gated("tenant.evidence.append", {"tenant_id": principal.tenant_id}, actor=principal.principal_id, tenant_id=principal.tenant_id)
         stored = tenant_evidence.append_with_audit(
-            body.model_dump(exclude_none=True), principal.tenant_id, principal.principal_id, (tenant_audit or audit)
+            body.model_dump(exclude_none=True), principal.tenant_id, principal.principal_id, _require_tenant_audit()
         )
         return {"record": stored}
     except EvidenceIntegrityError:
@@ -442,10 +454,11 @@ def verify_tenant_audit(principal: Principal = Depends(tenant_identity)) -> dict
 def govern_tenant(body: GovernIn, principal: Principal = Depends(tenant_identity)) -> dict:
     if not principal.allows("governance:execute"):
         raise HTTPException(403, "tenant role lacks governance:execute")
+    tenant_log = _require_tenant_audit()
     action = governance.stamp(body.action, mission="PRIMARY_MISSION",
                               auditable=True, data_provenance=True)
     verdict = governance.evaluate(action, body.context)
-    (tenant_audit or audit).record(
+    tenant_log.record(
         "governance.evaluate",
         {"tenant_id": principal.tenant_id, "action_type": str(body.action.get("type", "unspecified"))[:160],
          "allowed": verdict["allowed"], "violations": verdict["violations"]},
@@ -484,7 +497,7 @@ def add_tenant_member(body: TenantMemberIn, principal: Principal = Depends(tenan
         raise HTTPException(403, "only an owner may assign the owner role")
     try:
         result = _tenant_admin_store().add_member(
-            principal.tenant_id, body.email, body.display_name, body.role, principal.principal_id, principal.role, (tenant_audit or audit)
+            principal.tenant_id, body.email, body.display_name, body.role, principal.principal_id, principal.role, _require_tenant_audit()
         )
         return {"member": result}
     except TenantAdminError as exc:
@@ -502,7 +515,7 @@ def update_tenant_member(principal_id: str, body: TenantMemberUpdateIn,
         raise HTTPException(403, "only an owner may assign the owner role")
     try:
         result = _tenant_admin_store().update_member(
-            principal.tenant_id, principal_id, body.role, body.status, principal.principal_id, principal.role, (tenant_audit or audit)
+            principal.tenant_id, principal_id, body.role, body.status, principal.principal_id, principal.role, _require_tenant_audit()
         )
         return {"member": result}
     except TenantAdminError as exc:
@@ -529,7 +542,7 @@ def issue_tenant_credential(body: TenantCredentialIn,
     try:
         return _tenant_admin_store().issue_credential(
             principal.tenant_id, body.principal_id, body.label, body.expires_in_days,
-            principal.principal_id, principal.role, (tenant_audit or audit),
+            principal.principal_id, principal.role, _require_tenant_audit(),
         )
     except TenantAdminError as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -544,7 +557,7 @@ def revoke_tenant_credential(credential_id: str,
         raise HTTPException(403, "tenant role lacks credentials:manage")
     try:
         return _tenant_admin_store().revoke_credential(
-            principal.tenant_id, credential_id, principal.principal_id, principal.role, (tenant_audit or audit)
+            principal.tenant_id, credential_id, principal.principal_id, principal.role, _require_tenant_audit()
         )
     except TenantAdminError as exc:
         raise HTTPException(404, str(exc)) from exc
@@ -609,7 +622,7 @@ def get_tenant_usage(principal: Principal = Depends(tenant_identity)) -> dict:
         raise HTTPException(403, "tenant role lacks usage:read")
     try:
         return _tenant_usage_store().summary(
-            principal.tenant_id, principal.principal_id, tenant_audit or audit)
+            principal.tenant_id, principal.principal_id, _require_tenant_audit())
     except TenantUsageUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
 
@@ -666,7 +679,7 @@ def create_tenant_assistant_conversation(
               {"title_length": len(body.title.strip())},
               actor=principal.principal_id, tenant_id=principal.tenant_id)
         result = _tenant_assistant_store().create(
-            principal.tenant_id, principal.principal_id, body.title, tenant_audit or audit)
+            principal.tenant_id, principal.principal_id, body.title, _require_tenant_audit())
         return {"conversation": result}
     except TenantConversationError as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -695,11 +708,11 @@ async def send_tenant_assistant_message(
         rpm = int(os.environ.get("OMNIS_TENANT_ASSISTANT_RPM", "30"))
         _tenant_usage_store().consume(
             principal.tenant_id, principal.principal_id, "assistant.message",
-            rpm, tenant_audit or audit)
+            rpm, _require_tenant_audit())
         reply = await assistant.chat(body.message.strip(), history)
         updated = store.persist_exchange(
             principal.tenant_id, principal.principal_id, conversation_id,
-            body.message, reply, metadata["message_count"], tenant_audit or audit)
+            body.message, reply, metadata["message_count"], _require_tenant_audit())
         return {"conversation": updated, "reply": reply}
     except TenantConversationError as exc:
         status = 404 if "not found" in str(exc) else (422 if "must be a UUID" in str(exc) else 409)
@@ -741,7 +754,7 @@ def create_tenant_decision_rule(body: TenantDecisionRuleIn,
     try:
         _tenant_operation(principal, "tenant.decision_rule.create", {"rule_name": body.name})
         result = _tenant_rule_store().create_rule(
-            principal.tenant_id, principal.principal_id, body.model_dump(), tenant_audit or audit)
+            principal.tenant_id, principal.principal_id, body.model_dump(), _require_tenant_audit())
         return {"rule": result}
     except TenantRuleError as exc:
         raise HTTPException(409, str(exc)) from exc
@@ -757,7 +770,7 @@ def update_tenant_decision_rule(rule_id: str, body: TenantDecisionRuleIn,
     try:
         _tenant_operation(principal, "tenant.decision_rule.update", {"rule_id": rule_id, "rule_name": body.name})
         result = _tenant_rule_store().update_rule(
-            principal.tenant_id, principal.principal_id, rule_id, body.model_dump(), tenant_audit or audit)
+            principal.tenant_id, principal.principal_id, rule_id, body.model_dump(), _require_tenant_audit())
         return {"rule": result}
     except TenantRuleError as exc:
         raise HTTPException(404 if "not found" in str(exc) else 422, str(exc)) from exc
@@ -773,7 +786,7 @@ def delete_tenant_decision_rule(rule_id: str,
     try:
         _tenant_operation(principal, "tenant.decision_rule.delete", {"rule_id": rule_id})
         return _tenant_rule_store().delete_rule(
-            principal.tenant_id, principal.principal_id, rule_id, tenant_audit or audit)
+            principal.tenant_id, principal.principal_id, rule_id, _require_tenant_audit())
     except TenantRuleError as exc:
         raise HTTPException(404, str(exc)) from exc
     except TenantRuleUnavailable as exc:
@@ -809,7 +822,7 @@ def tenant_decide(body: DecideIn, principal: Principal = Depends(tenant_identity
                      stored["action"], stored["priority"])
             )
     result = decision_engine.decide(body.context)
-    (tenant_audit or audit).record(
+    _require_tenant_audit().record(
         "tenant.decision.executed",
         {"tenant_id": principal.tenant_id, "action": result["action"], "rule": result["rule"]},
         actor=principal.principal_id,
