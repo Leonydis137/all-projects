@@ -472,7 +472,7 @@ def tenant_admin_overview(principal: Principal = Depends(tenant_identity)) -> di
     if not principal.allows("tenant:manage"):
         raise HTTPException(403, "tenant role lacks tenant:manage")
     try:
-        return {"overview": _tenant_admin_store().overview(principal.tenant_id)}
+        return {"overview": _tenant_admin_store().overview(principal.tenant_id, principal.principal_id)}
     except TenantAdminError as exc:
         raise HTTPException(404, str(exc)) from exc
     except TenantAdminUnavailable as exc:
@@ -484,7 +484,7 @@ def list_tenant_members(principal: Principal = Depends(tenant_identity)) -> dict
     if not principal.allows("members:manage"):
         raise HTTPException(403, "tenant role lacks members:manage")
     try:
-        return {"members": _tenant_admin_store().list_members(principal.tenant_id)}
+        return {"members": _tenant_admin_store().list_members(principal.tenant_id, principal.principal_id)}
     except TenantAdminUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
 
@@ -529,7 +529,7 @@ def list_tenant_credentials(principal: Principal = Depends(tenant_identity)) -> 
     if not principal.allows("credentials:manage"):
         raise HTTPException(403, "tenant role lacks credentials:manage")
     try:
-        return {"credentials": _tenant_admin_store().list_credentials(principal.tenant_id)}
+        return {"credentials": _tenant_admin_store().list_credentials(principal.tenant_id, principal.principal_id)}
     except TenantAdminUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
 

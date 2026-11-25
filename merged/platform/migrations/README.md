@@ -93,7 +93,8 @@ has no global sequence: each tenant has its own event index and predecessor chai
 The runtime role receives SELECT/INSERT only; UPDATE, DELETE, and TRUNCATE are blocked
 by privileges and append-only triggers. The provisioning
 command sets the tenant context before creating the tenant, membership, and initial
-credential, so a separate provisioning role does not need BYPASSRLS.
+credential, then sets the new owner's principal context before credential issuance.
+A separate provisioning role does not need BYPASSRLS.
 
 The application uses a lightweight latest-event audit health probe. Full-chain integrity verification remains available through the audit verification operation and should be run as a deliberate integrity check rather than on every load-balancer probe. Hash chains do not prove source authenticity or actor identity, and cannot detect deletion of a final suffix without an independently retained checkpoint.
 
