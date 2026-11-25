@@ -459,3 +459,58 @@ def test_tenant_audit_chains_are_isolated_and_append_only(postgres_dsn):
                 "UPDATE omnis.tenant_audit_event SET event_type = 'tampered' WHERE tenant_id = %s AND event_index = 0",
                 (tenant_a,),
             )
+
+
+def test_tenant_credentials_fail_closed_for_expiry_revocation_and_disabled_identity(postgres_dsn):
+    """Authentication must reject credentials after every lifecycle invalidation."""
+    import psycopg
+    from omnis.identity import InvalidCredential, authenticate_api_key
+    from omnis.postgres_tenant_audit import PostgresTenantAuditLog
+    from omnis.tenant_admin import TenantAdminStore
+
+    marker = uuid4().hex
+    pepper = "integration-test-pepper-that-is-at-least-32-characters"
+    audit = PostgresTenantAuditLog(postgres_dsn)
+    admin = TenantAdminStore(postgres_dsn, pepper)
+    cases = []
+
+    for state in ("expired", "revoked", "principal_disabled", "tenant_suspended"):
+        tenant, owner = _create_tenant_owner(postgres_dsn, f"lifecycle-{state}-{marker}")
+        issued = admin.issue_credential(
+            tenant, owner, f"lifecycle-{state}", 30, owner, "owner", audit
+        )
+        cases.append((state, tenant, owner, issued))
+
+    with psycopg.connect(postgres_dsn) as db:
+        for state, tenant, owner, issued in cases:
+            db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant,))
+            if state in {"expired", "revoked"}:
+                if state == "expired":
+                    db.execute(
+                        """UPDATE omnis.api_credential
+                           SET expires_at = now() - interval '1 second'
+                           WHERE credential_id = %s AND tenant_id = %s""",
+                        (issued["credential_id"], tenant),
+                    )
+                else:
+                    db.execute(
+                        """UPDATE omnis.api_credential SET revoked_at = now()
+                           WHERE credential_id = %s AND tenant_id = %s""",
+                        (issued["credential_id"], tenant),
+                    )
+            elif state == "principal_disabled":
+                db.execute(
+                    "UPDATE omnis.principal SET status = 'disabled' WHERE principal_id = %s",
+                    (owner,),
+                )
+            elif state == "tenant_suspended":
+                db.execute(
+                    "UPDATE omnis.tenant SET status = 'suspended' WHERE tenant_id = %s",
+                    (tenant,),
+                )
+
+    for state, tenant, _owner, issued in cases:
+        with pytest.raises(InvalidCredential):
+            authenticate_api_key(
+                issued["api_token_once"], tenant, dsn=postgres_dsn, pepper=pepper
+            )

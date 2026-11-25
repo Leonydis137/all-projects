@@ -338,6 +338,7 @@ def test_tenant_source_fetch_is_governed_before_network(monkeypatch):
                          "operator@example.test", "Operator", "operator", TOKEN[:32])
     monkeypatch.setattr(api, "tenant_evidence", object())
     monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "tenant_audit", AuditLog())
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: operator)
     def deny(*args, **kwargs):
         raise HTTPException(403, "blocked by test governance")
@@ -396,14 +397,26 @@ def test_tenant_source_fetch_persists_to_authenticated_tenant(monkeypatch):
         "submitted_by": "omnis-source-fetcher",
         "provenance_attestation": attestation,
     }
+    class TenantAudit:
+        def __init__(self):
+            self.events = []
+        def record(self, kind, payload, actor=None):
+            self.events.append({"kind": kind, "payload": payload, "actor": actor})
+            return self.events[-1]
+
+    tenant_log = TenantAudit()
+    global_log = AuditLog()
+
     class TenantStore:
-        def append_with_audit(self, value, tenant_id, actor_id, audit):
+        def append_with_audit(self, value, tenant_id, actor_id, audit_log):
             assert tenant_id == operator.tenant_id
             assert actor_id == operator.principal_id
+            assert audit_log is tenant_log, "tenant evidence must append to the tenant audit chain"
             assert value["provenance_attestation"] == attestation
             return {"tenant_id": tenant_id, **value, "submitted_by": actor_id}
     monkeypatch.setattr(api, "tenant_evidence", TenantStore())
-    monkeypatch.setattr(api, "audit", AuditLog())
+    monkeypatch.setattr(api, "tenant_audit", tenant_log)
+    monkeypatch.setattr(api, "audit", global_log)
     monkeypatch.setattr(api, "authenticate_api_key", lambda token, tenant_id: operator)
     monkeypatch.setattr(api, "gated", lambda *args, **kwargs: {"allowed": True})
     monkeypatch.setattr(api, "acquire_and_attest", lambda *args: (record, {"content_sha256": "c" * 64}))
