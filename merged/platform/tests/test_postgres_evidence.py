@@ -554,3 +554,24 @@ def test_tenant_credentials_fail_closed_for_expiry_revocation_and_disabled_ident
             authenticate_api_key(
                 issued["api_token_once"], tenant, dsn=postgres_dsn, pepper=pepper
             )
+
+def test_evidence_idempotency_migration_created_valid_partial_unique_index(postgres_dsn):
+    """Migration 004 must leave its concurrently-created partial index usable."""
+    import psycopg
+
+    with psycopg.connect(postgres_dsn) as db:
+        index = db.execute(
+            """
+            SELECT idx.indisunique, idx.indisvalid, idx.indisready,
+                   pg_get_expr(idx.indpred, idx.indrelid) AS predicate
+            FROM pg_index AS idx
+            JOIN pg_class AS index_class ON index_class.oid = idx.indexrelid
+            JOIN pg_namespace AS namespace ON namespace.oid = index_class.relnamespace
+            WHERE namespace.nspname = 'omnis'
+              AND index_class.relname = 'evidence_idempotency_key_uq'
+            """
+        ).fetchone()
+
+    assert index is not None
+    assert index[0:3] == (True, True, True)
+    assert "idempotency_key IS NOT NULL" in index[3]
