@@ -48,20 +48,28 @@ class TenantAdminStore:
             raise TenantAdminError("identifier must be a UUID") from exc
 
     @staticmethod
-    def _lock_tenant(cur, tenant: str) -> None:
+    def _require_owner_assignment(role: str, actor_role: str) -> None:
+        """Only an existing tenant owner may grant or promote the owner role."""
+        if role == "owner" and actor_role != "owner":
+            raise TenantAdminError("only an owner may assign the owner role")
+
+    @staticmethod
+    def _lock_tenant(cur, tenant: str, actor: str) -> None:
         cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant,))
+        cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor,))
         cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"omnis.tenant_admin:{tenant}",))
         cur.execute("SELECT status FROM omnis.tenant WHERE tenant_id = %s", (tenant,))
         row = cur.fetchone()
         if not row or row["status"] != "active":
             raise TenantAdminError("tenant is unavailable")
 
-    def overview(self, tenant_id: str) -> dict[str, Any]:
+    def overview(self, tenant_id: str, actor_id: str) -> dict[str, Any]:
         """Return a compact tenant-scoped administration overview."""
-        tenant = self._uuid(tenant_id)
+        tenant, actor = self._uuid(tenant_id), self._uuid(actor_id)
         with self._connect() as db:
             with db.cursor() as cur:
                 cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant,))
+                cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor,))
                 cur.execute(
                     """SELECT t.tenant_id, t.slug, t.display_name, t.status, t.created_at,
                               (SELECT count(*) FROM omnis.tenant_membership m
@@ -88,11 +96,12 @@ class TenantAdminStore:
                     raise TenantAdminError("tenant not found")
                 return dict(row)
 
-    def list_members(self, tenant_id: str) -> list[dict[str, Any]]:
-        tenant = self._uuid(tenant_id)
+    def list_members(self, tenant_id: str, actor_id: str) -> list[dict[str, Any]]:
+        tenant, actor = self._uuid(tenant_id), self._uuid(actor_id)
         with self._connect() as db:
             with db.cursor() as cur:
                 cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant,))
+                cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor,))
                 cur.execute(
                     """SELECT p.principal_id, p.email, p.display_name, p.status AS principal_status,
                               m.role, m.status AS membership_status, m.created_at
@@ -103,12 +112,13 @@ class TenantAdminStore:
                 )
                 return list(cur.fetchall())
 
-    def list_credentials(self, tenant_id: str) -> list[dict[str, Any]]:
+    def list_credentials(self, tenant_id: str, actor_id: str) -> list[dict[str, Any]]:
         """Return credential metadata only; bearer secrets are never recoverable."""
-        tenant = self._uuid(tenant_id)
+        tenant, actor = self._uuid(tenant_id), self._uuid(actor_id)
         with self._connect() as db:
             with db.cursor() as cur:
                 cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant,))
+                cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor,))
                 cur.execute(
                     """SELECT c.credential_id, c.principal_id, p.email, c.label,
                               c.expires_at, c.revoked_at, c.created_at
@@ -131,9 +141,10 @@ class TenantAdminStore:
             raise TenantAdminError("display_name must contain 1-160 characters")
         if role not in {"owner", "admin", "operator", "analyst", "reader"}:
             raise TenantAdminError("role is invalid")
+        self._require_owner_assignment(role, actor_role)
         with self._connect() as db:
             with db.cursor() as cur:
-                self._lock_tenant(cur, tenant)
+                self._lock_tenant(cur, tenant, actor)
                 cur.execute(
                     """INSERT INTO omnis.principal (email, display_name)
                        VALUES (%s, %s) ON CONFLICT (email) DO NOTHING
@@ -194,11 +205,12 @@ class TenantAdminStore:
         tenant, member, actor = self._uuid(tenant_id), self._uuid(principal_id), self._uuid(actor_id)
         if role not in {"owner", "admin", "operator", "analyst", "reader"}:
             raise TenantAdminError("role is invalid")
+        self._require_owner_assignment(role, actor_role)
         if status not in {"active", "suspended"}:
             raise TenantAdminError("status is invalid")
         with self._connect() as db:
             with db.cursor() as cur:
-                self._lock_tenant(cur, tenant)
+                self._lock_tenant(cur, tenant, actor)
                 cur.execute(
                     """SELECT role, status FROM omnis.tenant_membership
                        WHERE tenant_id = %s AND principal_id = %s FOR UPDATE""",
@@ -257,7 +269,7 @@ class TenantAdminStore:
         digest = digest_api_key(token, self.pepper)
         with self._connect() as db:
             with db.cursor() as cur:
-                self._lock_tenant(cur, tenant)
+                self._lock_tenant(cur, tenant, actor)
                 cur.execute(
                     """SELECT m.role FROM omnis.tenant_membership m
                        JOIN omnis.principal p ON p.principal_id = m.principal_id
@@ -292,7 +304,7 @@ class TenantAdminStore:
         tenant, credential, actor = self._uuid(tenant_id), self._uuid(credential_id), self._uuid(actor_id)
         with self._connect() as db:
             with db.cursor() as cur:
-                self._lock_tenant(cur, tenant)
+                self._lock_tenant(cur, tenant, actor)
                 cur.execute(
                     """SELECT c.credential_id, c.principal_id, c.revoked_at, m.role
                        FROM omnis.api_credential c

@@ -21,17 +21,28 @@ def postgres_dsn():
         pytest.skip("OMNIS_TEST_DATABASE_URL is not configured")
     psycopg = pytest.importorskip("psycopg")
     migration_dir = Path(__file__).resolve().parents[1] / "migrations"
+    migrations = (
+        "001_evidence_and_audit.sql",
+        "002_ledger_immutability.sql",
+        "003_audit_event_canonical_payload.sql",
+        "004_evidence_idempotency.sql",
+        "005_case_insensitive_source_uri.sql",
+        "006_tenant_identity.sql",
+        "007_tenant_evidence.sql",
+        "008_identity_row_security.sql",
+        "009_tenant_bound_credentials.sql",
+        "010_tenant_audit.sql",
+        "011_tenant_decision_rules.sql",
+        "012_tenant_assistant_conversations.sql",
+        "013_tenant_usage_metering.sql",
+        "014_tenant_usage_policy_member_reads.sql",
+        "015_tenant_audit_active_actor.sql",
+        "016_tenant_evidence_and_rules_active_actor.sql",
+        "017_tenant_lifecycle_storage_rls.sql",
+    )
     with psycopg.connect(DSN, autocommit=True) as db:
-        db.execute((migration_dir / "001_evidence_and_audit.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "002_ledger_immutability.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "003_audit_event_canonical_payload.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "004_evidence_idempotency.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "005_case_insensitive_source_uri.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "006_tenant_identity.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "007_tenant_evidence.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "008_identity_row_security.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "009_tenant_bound_credentials.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "010_tenant_audit.sql").read_text(encoding="utf-8"))
+        for name in migrations:
+            db.execute((migration_dir / name).read_text(encoding="utf-8"))
     return DSN
 
 
@@ -414,7 +425,11 @@ def test_tenant_admin_member_lifecycle_and_credential_revocation(postgres_dsn):
         )
 
     admin.update_member(tenant, owner, "admin", "active", owner, "owner", audit)
-    assert {item["role"] for item in admin.list_members(tenant)} == {"owner", "admin"}
+    assert {item["role"] for item in admin.list_members(tenant, owner)} == {"owner", "admin"}
+    overview = admin.overview(tenant, owner)
+    assert overview["credential_count"] == 2
+    assert overview["active_credential_count"] == 1
+    assert len(admin.list_credentials(tenant, owner)) == 2
     assert audit.verify(tenant)["valid"] is True
 
 
@@ -458,4 +473,59 @@ def test_tenant_audit_chains_are_isolated_and_append_only(postgres_dsn):
             db.execute(
                 "UPDATE omnis.tenant_audit_event SET event_type = 'tampered' WHERE tenant_id = %s AND event_index = 0",
                 (tenant_a,),
+            )
+
+
+def test_tenant_credentials_fail_closed_for_expiry_revocation_and_disabled_identity(postgres_dsn):
+    """Authentication must reject credentials after every lifecycle invalidation."""
+    import psycopg
+    from omnis.identity import InvalidCredential, authenticate_api_key
+    from omnis.postgres_tenant_audit import PostgresTenantAuditLog
+    from omnis.tenant_admin import TenantAdminStore
+
+    marker = uuid4().hex
+    pepper = "integration-test-pepper-that-is-at-least-32-characters"
+    audit = PostgresTenantAuditLog(postgres_dsn)
+    admin = TenantAdminStore(postgres_dsn, pepper)
+    cases = []
+
+    for state in ("expired", "revoked", "principal_disabled", "tenant_suspended"):
+        tenant, owner = _create_tenant_owner(postgres_dsn, f"lifecycle-{state}-{marker}")
+        issued = admin.issue_credential(
+            tenant, owner, f"lifecycle-{state}", 30, owner, "owner", audit
+        )
+        cases.append((state, tenant, owner, issued))
+
+    with psycopg.connect(postgres_dsn) as db:
+        for state, tenant, owner, issued in cases:
+            db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant,))
+            if state in {"expired", "revoked"}:
+                if state == "expired":
+                    db.execute(
+                        """UPDATE omnis.api_credential
+                           SET expires_at = now() - interval '1 second'
+                           WHERE credential_id = %s AND tenant_id = %s""",
+                        (issued["credential_id"], tenant),
+                    )
+                else:
+                    db.execute(
+                        """UPDATE omnis.api_credential SET revoked_at = now()
+                           WHERE credential_id = %s AND tenant_id = %s""",
+                        (issued["credential_id"], tenant),
+                    )
+            elif state == "principal_disabled":
+                db.execute(
+                    "UPDATE omnis.principal SET status = 'disabled' WHERE principal_id = %s",
+                    (owner,),
+                )
+            elif state == "tenant_suspended":
+                db.execute(
+                    "UPDATE omnis.tenant SET status = 'suspended' WHERE tenant_id = %s",
+                    (tenant,),
+                )
+
+    for state, tenant, _owner, issued in cases:
+        with pytest.raises(InvalidCredential):
+            authenticate_api_key(
+                issued["api_token_once"], tenant, dsn=postgres_dsn, pepper=pepper
             )

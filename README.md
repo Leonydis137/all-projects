@@ -22,3 +22,5 @@ make install P=services/covenant # install one project
 make test                        # test everything (slow)
 ```
 `projects.json` is the machine-readable catalog; `docs/MIGRATION.md` maps old repo names to new paths.
+
+See [ROADMAP.md](./ROADMAP.md) for the staged engineering plan and current CI limitations.

@@ -38,8 +38,8 @@ app.use(
   }),
 );
 app.use(cors());
-app.use(express.json({ limit: "256kb" }));
-app.use(express.urlencoded({ extended: true, limit: "256kb" }));
+app.use(express.json({ inflate: false, limit: "256kb" }));
+app.use(express.urlencoded({ extended: true, inflate: false, limit: "256kb" }));
 
 app.use("/api", router);
 
