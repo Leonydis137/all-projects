@@ -42,10 +42,10 @@ class PostgresTenantEvidenceLedger:
             raise EvidenceValidationError("tenant_id must be a UUID") from exc
 
     @staticmethod
-    def _scope(cur, tenant_id: str, actor_id: str | None = None) -> None:
+    def _scope(cur, tenant_id: str, principal_id: str | None = None) -> None:
         cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant_id,))
-        if actor_id is not None:
-            cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor_id,))
+        if principal_id is not None:
+            cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (principal_id,))
 
     @staticmethod
     def _decode(row: dict[str, Any], tenant_id: str) -> dict[str, Any]:

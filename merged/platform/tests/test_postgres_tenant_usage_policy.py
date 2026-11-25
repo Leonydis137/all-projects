@@ -26,7 +26,8 @@ MIGRATIONS = (
     "013_tenant_usage_metering.sql",
     "014_tenant_usage_policy_member_reads.sql",
     "015_tenant_audit_active_actor.sql",
-    "016_tenant_storage_active_actor.sql",
+    "016_tenant_evidence_and_rules_active_actor.sql",
+    "017_tenant_lifecycle_storage_rls.sql",
 )
 
 
@@ -52,7 +53,7 @@ def usage_policy_dsn():
         )
         db.execute(f"GRANT USAGE ON SCHEMA omnis TO {TEST_ROLE}")
         db.execute(
-            f"GRANT SELECT ON omnis.tenant_usage_policy, omnis.tenant_membership TO {TEST_ROLE}"
+            f"GRANT SELECT ON omnis.tenant_usage_policy, omnis.tenant_membership, omnis.tenant, omnis.principal TO {TEST_ROLE}"
         )
     return DSN
 
@@ -162,3 +163,29 @@ def test_quota_policy_table_keeps_forced_rls_and_read_only_runtime_access(usage_
             (TEST_ROLE, TEST_ROLE, TEST_ROLE, TEST_ROLE),
         ).fetchone()
         assert privileges == (True, False, False, False)
+
+
+def test_quota_policy_is_hidden_for_disabled_principals_and_suspended_tenants(usage_policy_dsn):
+    import psycopg
+
+    marker = uuid4().hex
+    with psycopg.connect(usage_policy_dsn) as db:
+        tenant_id, owner_id, _, _, _ = _insert_tenant_and_members(db, marker)
+        disabled_id = uuid4()
+        db.execute("INSERT INTO omnis.principal (principal_id, email, display_name, status) VALUES (%s, %s, %s, 'disabled')",
+                   (disabled_id, f"disabled-quota-{marker}@example.test", "Disabled"))
+        db.execute("INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) VALUES (%s, %s, 'reader', 'active')",
+                   (tenant_id, disabled_id))
+        suspended_tenant, suspended_actor = uuid4(), uuid4()
+        db.execute("INSERT INTO omnis.tenant (tenant_id, slug, display_name, status) VALUES (%s, %s, %s, 'suspended')",
+                   (suspended_tenant, "quota-suspended-" + marker[:20], "Suspended quota tenant"))
+        db.execute("INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+                   (suspended_actor, f"suspended-quota-{marker}@example.test", "Suspended tenant owner"))
+        db.execute("INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) VALUES (%s, %s, 'owner', 'active')",
+                   (suspended_tenant, suspended_actor))
+        db.execute("INSERT INTO omnis.tenant_usage_policy (tenant_id, monthly_request_limit, updated_by) VALUES (%s, 9, %s)",
+                   (suspended_tenant, suspended_actor))
+
+    assert _visible_quota(usage_policy_dsn, tenant_id, str(disabled_id)) == []
+    assert _visible_quota(usage_policy_dsn, str(suspended_tenant), str(suspended_actor)) == []
+    assert _visible_quota(usage_policy_dsn, tenant_id, owner_id) == [(37,)]

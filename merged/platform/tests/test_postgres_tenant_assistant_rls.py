@@ -30,7 +30,8 @@ MIGRATIONS = (
     "013_tenant_usage_metering.sql",
     "014_tenant_usage_policy_member_reads.sql",
     "015_tenant_audit_active_actor.sql",
-    "016_tenant_storage_active_actor.sql",
+    "016_tenant_evidence_and_rules_active_actor.sql",
+    "017_tenant_lifecycle_storage_rls.sql",
 )
 
 
@@ -66,6 +67,11 @@ def assistant_rls_dsn():
         db.execute(f"GRANT SELECT, INSERT ON omnis.tenant_evidence TO {TEST_ROLE}")
         db.execute(f"GRANT USAGE, SELECT ON SEQUENCE omnis.tenant_evidence_sequence_seq TO {TEST_ROLE}")
         db.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON omnis.tenant_decision_rule TO {TEST_ROLE}")
+        db.execute(f"GRANT SELECT ON omnis.api_credential TO {TEST_ROLE}")
+        db.execute(f"GRANT UPDATE (revoked_at) ON omnis.api_credential TO {TEST_ROLE}")
+        db.execute(f"GRANT SELECT, INSERT, UPDATE ON omnis.tenant_usage_minute TO {TEST_ROLE}")
+        db.execute(f"GRANT SELECT, INSERT ON omnis.tenant_usage_event TO {TEST_ROLE}")
+        db.execute(f"GRANT SELECT ON omnis.tenant_usage_policy TO {TEST_ROLE}")
     return DSN
 
 
@@ -318,99 +324,179 @@ def test_tenant_audit_inserts_require_matching_active_actor_and_tenant(assistant
                      actor=str(suspended_tenant_actor))
 
 
-def test_tenant_evidence_insert_requires_matching_active_actor(assistant_rls_dsn):
+def _attempt_tenant_evidence_insert(dsn, tenant_id, principal_id, submitted_by):
+    with _runtime_connection(dsn) as db:
+        db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant_id,))
+        db.execute("SELECT set_config('omnis.principal_id', %s, true)", (principal_id,))
+        db.execute(
+            """INSERT INTO omnis.tenant_evidence
+               (tenant_id, source_uri, content_sha256, acquired_at, acquisition_method,
+                declared_license, submitted_by, record_json, previous_hash, record_hash)
+               VALUES (%s, 'https://example.test/evidence', %s, now(), 'integration-test',
+                       'unknown', %s, '{}'::jsonb, %s, %s)""",
+            (tenant_id, "a" * 64, submitted_by, "0" * 64, "f" * 64),
+        )
+
+
+def _attempt_tenant_rule_insert(dsn, tenant_id, principal_id, updated_by):
+    with _runtime_connection(dsn) as db:
+        db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant_id,))
+        db.execute("SELECT set_config('omnis.principal_id', %s, true)", (principal_id,))
+        row = db.execute(
+            """INSERT INTO omnis.tenant_decision_rule
+               (tenant_id, name, field, comparison, value, action, priority, created_by, updated_by)
+               VALUES (%s, %s, 'risk_score', '>=', '80'::jsonb, 'review', 10, %s, %s)
+               RETURNING rule_id""",
+            (tenant_id, "rule-" + uuid4().hex[:12], updated_by, updated_by),
+        ).fetchone()
+        return str(row[0])
+
+
+def _attempt_tenant_rule_delete(dsn, tenant_id, principal_id, rule_id):
+    with _runtime_connection(dsn) as db:
+        db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant_id,))
+        db.execute("SELECT set_config('omnis.principal_id', %s, true)", (principal_id,))
+        db.execute(
+            "DELETE FROM omnis.tenant_decision_rule WHERE tenant_id = %s AND rule_id = %s",
+            (tenant_id, rule_id),
+        )
+        return db.execute("SELECT count(*) FROM omnis.tenant_decision_rule WHERE tenant_id = %s AND rule_id = %s",
+                          (tenant_id, rule_id)).fetchone()[0]
+
+def test_tenant_evidence_writes_require_matching_active_actor(assistant_rls_dsn):
     import psycopg
-    from omnis.postgres_tenant_audit import PostgresTenantAuditLog
-    from omnis.postgres_tenant_evidence import PostgresTenantEvidenceLedger
 
     marker = uuid4().hex
     tenant_a, actor_a, _, tenant_b, actor_b, _ = _seed_two_tenants(assistant_rls_dsn, marker)
-    audit = PostgresTenantAuditLog(
-        assistant_rls_dsn,
-        connect_factory=lambda: _runtime_connection(assistant_rls_dsn),
-    )
-    ledger = PostgresTenantEvidenceLedger(
-        assistant_rls_dsn,
-        connect_factory=lambda: _runtime_connection(assistant_rls_dsn),
-    )
-    record = {
-        "source_uri": "https://example.org/" + marker,
-        "content_sha256": "a" * 64,
-        "acquired_at": "2026-11-25T05:00:00Z",
-        "acquisition_method": "integration-test",
-        "license": "unknown",
-    }
-    stored = ledger.append_with_audit(record, tenant_a, actor_a, audit)
-    assert stored["submitted_by"] == actor_a
-
-    with _runtime_connection(assistant_rls_dsn) as db:
-        db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant_a,))
-        db.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor_a,))
-        with pytest.raises(psycopg.Error):
-            db.execute(
-                """INSERT INTO omnis.tenant_evidence
-                   (tenant_id, source_uri, content_sha256, acquired_at, acquisition_method,
-                    declared_license, submitted_by, record_json, previous_hash, record_hash)
-                   VALUES (%s, %s, %s, now(), 'test', 'unknown', %s, '{}'::jsonb, %s, %s)""",
-                (tenant_a, "https://example.org/spoof-" + marker, "b" * 64,
-                 actor_b, "0" * 64, "f" * 64),
-            )
-
-    with pytest.raises(psycopg.Error):
-        ledger.append_with_audit({**record, "source_uri": "https://example.org/cross-" + marker},
-                                 tenant_a, actor_b, audit)
-
-
-def test_tenant_decision_rule_writes_require_active_matching_actor(assistant_rls_dsn):
-    import psycopg
-    from omnis.postgres_tenant_audit import PostgresTenantAuditLog
-    from omnis.tenant_decision_rules import TenantDecisionRuleStore
-
-    marker = uuid4().hex
-    tenant_a, actor_a, _, tenant_b, actor_b, _ = _seed_two_tenants(assistant_rls_dsn, marker)
-    audit = PostgresTenantAuditLog(
-        assistant_rls_dsn,
-        connect_factory=lambda: _runtime_connection(assistant_rls_dsn),
-    )
-    store = TenantDecisionRuleStore(
-        assistant_rls_dsn,
-        connect_factory=lambda: _runtime_connection(assistant_rls_dsn),
-    )
-    rule = {"name": "risk-" + marker[:12], "field": "risk", "op": ">",
-            "value": 10, "action": "review", "priority": 5}
-    created = store.create_rule(tenant_a, actor_a, rule, audit)
-    assert created["updated_by"] == actor_a
-    changed = store.update_rule(
-        tenant_a, actor_a, created["rule_id"], {**rule, "action": "escalate"}, audit
-    )
-    assert changed["action"] == "escalate"
-    assert store.delete_rule(tenant_a, actor_a, created["rule_id"], audit)["deleted"] is True
-
-    with _runtime_connection(assistant_rls_dsn) as db:
-        db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant_a,))
-        db.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor_a,))
-        with pytest.raises(psycopg.Error):
-            db.execute(
-                """INSERT INTO omnis.tenant_decision_rule
-                   (tenant_id, name, field, comparison, value, action, updated_by, created_by)
-                   VALUES (%s, %s, 'risk', '>', '10'::jsonb, 'review', %s, %s)""",
-                (tenant_a, "spoof-" + marker[:12], actor_b, actor_a),
-            )
-
-    with pytest.raises(psycopg.Error):
-        store.create_rule(tenant_a, actor_b, {**rule, "name": "cross-" + marker[:12]}, audit)
-
-    suspended = uuid4()
+    suspended_actor, disabled_actor, spoofed_actor = uuid4(), uuid4(), uuid4()
     with psycopg.connect(assistant_rls_dsn) as db:
-        db.execute(
-            "INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
-            (suspended, f"rule-suspended-{marker}@example.test", "Suspended"),
-        )
-        db.execute(
-            "INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) "
-            "VALUES (%s, %s, 'admin', 'suspended')",
-            (tenant_a, suspended),
-        )
-    with pytest.raises(psycopg.Error):
-        store.create_rule(tenant_a, str(suspended),
-                          {**rule, "name": "suspended-" + marker[:12]}, audit)
+        db.execute("INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+                   (suspended_actor, f"evidence-suspended-{marker}@example.test", "Suspended"))
+        db.execute("INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) VALUES (%s, %s, 'reader', 'suspended')",
+                   (tenant_a, suspended_actor))
+        db.execute("INSERT INTO omnis.principal (principal_id, email, display_name, status) VALUES (%s, %s, %s, 'disabled')",
+                   (disabled_actor, f"evidence-disabled-{marker}@example.test", "Disabled"))
+        db.execute("INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) VALUES (%s, %s, 'reader', 'active')",
+                   (tenant_a, disabled_actor))
+        db.execute("INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+                   (spoofed_actor, f"evidence-spoof-{marker}@example.test", "Spoof target"))
+        db.execute("INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) VALUES (%s, %s, 'reader', 'active')",
+                   (tenant_a, spoofed_actor))
+
+    _attempt_tenant_evidence_insert(assistant_rls_dsn, tenant_a, actor_a, actor_a)
+    for principal, submitted in ((actor_a, spoofed_actor), (actor_b, actor_b),
+                                 (suspended_actor, suspended_actor), (disabled_actor, disabled_actor)):
+        with pytest.raises(psycopg.Error):
+            _attempt_tenant_evidence_insert(assistant_rls_dsn, tenant_a, principal, submitted)
+
+
+def test_tenant_decision_rule_writes_require_matching_active_actor(assistant_rls_dsn):
+    import psycopg
+
+    marker = uuid4().hex
+    tenant_a, actor_a, _, tenant_b, actor_b, _ = _seed_two_tenants(assistant_rls_dsn, marker)
+    suspended_actor, disabled_actor = uuid4(), uuid4()
+    with psycopg.connect(assistant_rls_dsn) as db:
+        db.execute("INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+                   (suspended_actor, f"rule-suspended-{marker}@example.test", "Suspended"))
+        db.execute("INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) VALUES (%s, %s, 'reader', 'suspended')",
+                   (tenant_a, suspended_actor))
+        db.execute("INSERT INTO omnis.principal (principal_id, email, display_name, status) VALUES (%s, %s, %s, 'disabled')",
+                   (disabled_actor, f"rule-disabled-{marker}@example.test", "Disabled"))
+        db.execute("INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) VALUES (%s, %s, 'reader', 'active')",
+                   (tenant_a, disabled_actor))
+
+    rule_id = _attempt_tenant_rule_insert(assistant_rls_dsn, tenant_a, actor_a, actor_a)
+    for principal, attributed in ((actor_a, actor_b), (actor_b, actor_b),
+                                  (suspended_actor, suspended_actor), (disabled_actor, disabled_actor)):
+        with pytest.raises(psycopg.Error):
+            _attempt_tenant_rule_insert(assistant_rls_dsn, tenant_a, principal, attributed)
+
+    # DELETE has its own actor-aware USING policy; tenant context alone is insufficient.
+    assert _attempt_tenant_rule_delete(assistant_rls_dsn, tenant_a, actor_b, rule_id) == 1
+    assert _attempt_tenant_rule_delete(assistant_rls_dsn, tenant_a, suspended_actor, rule_id) == 1
+    assert _attempt_tenant_rule_delete(assistant_rls_dsn, tenant_a, disabled_actor, rule_id) == 1
+    assert _attempt_tenant_rule_delete(assistant_rls_dsn, tenant_a, actor_a, rule_id) == 0
+
+
+def test_assistant_usage_and_credentials_fail_closed_on_lifecycle(assistant_rls_dsn):
+    import psycopg
+
+    marker = uuid4().hex
+    tenant_a, actor_a, conversation_a, _, _, _ = _seed_two_tenants(assistant_rls_dsn, marker)
+    disabled_actor, suspended_actor = uuid4(), uuid4()
+    suspended_tenant, suspended_tenant_actor = uuid4(), uuid4()
+    with psycopg.connect(assistant_rls_dsn) as db:
+        db.execute("INSERT INTO omnis.principal (principal_id, email, display_name, status) VALUES (%s, %s, %s, 'disabled')",
+                   (disabled_actor, f"lifecycle-disabled-{marker}@example.test", "Disabled"))
+        db.execute("INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) VALUES (%s, %s, 'reader', 'active')",
+                   (tenant_a, disabled_actor))
+        db.execute("INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+                   (suspended_actor, f"lifecycle-suspended-{marker}@example.test", "Suspended"))
+        db.execute("INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) VALUES (%s, %s, 'reader', 'suspended')",
+                   (tenant_a, suspended_actor))
+        db.execute("INSERT INTO omnis.tenant (tenant_id, slug, display_name, status) VALUES (%s, %s, %s, 'suspended')",
+                   (suspended_tenant, "lifecycle-" + marker[:20], "Suspended tenant"))
+        db.execute("INSERT INTO omnis.principal (principal_id, email, display_name) VALUES (%s, %s, %s)",
+                   (suspended_tenant_actor, f"lifecycle-tenant-{marker}@example.test", "Tenant actor"))
+        db.execute("INSERT INTO omnis.tenant_membership (tenant_id, principal_id, role, status) VALUES (%s, %s, 'owner', 'active')",
+                   (suspended_tenant, suspended_tenant_actor))
+        db.execute("INSERT INTO omnis.tenant_assistant_conversation (tenant_id, created_by, title) VALUES (%s, %s, 'Suspended tenant thread')",
+                   (suspended_tenant, suspended_tenant_actor))
+        db.execute("INSERT INTO omnis.tenant_usage_policy (tenant_id, monthly_request_limit, updated_by) VALUES (%s, 12, %s)",
+                   (tenant_a, actor_a))
+        db.execute("INSERT INTO omnis.tenant_usage_event (tenant_id, principal_id, operation, outcome) VALUES (%s, %s, 'assistant.message', 'accepted')",
+                   (tenant_a, actor_a))
+        db.execute("INSERT INTO omnis.api_credential (tenant_id, principal_id, token_prefix, token_digest, label) VALUES "
+                   "(%s, %s, 'omnis_live_test', %s, 'active actor'), "
+                   "(%s, %s, 'omnis_live_test', %s, 'suspended member'), "
+                   "(%s, %s, 'omnis_live_test', %s, 'disabled principal')",
+                   (tenant_a, actor_a, "a"*64, tenant_a, suspended_actor, "b"*64,
+                    tenant_a, disabled_actor, "c"*64))
+
+    with _runtime_connection(assistant_rls_dsn) as db:
+        db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant_a,))
+        db.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor_a,))
+        visible_conversations = db.execute(
+            "SELECT conversation_id FROM omnis.tenant_assistant_conversation WHERE tenant_id = %s",
+            (tenant_a,),
+        ).fetchall()
+        assert len(visible_conversations) == 1
+        assert str(visible_conversations[0][0]) == conversation_a
+        assert db.execute("SELECT monthly_request_limit FROM omnis.tenant_usage_policy WHERE tenant_id = %s",
+                          (tenant_a,)).fetchall() == [(12,)]
+        assert db.execute("SELECT operation FROM omnis.tenant_usage_event WHERE tenant_id = %s",
+                          (tenant_a,)).fetchall() == [("assistant.message",)]
+        credential_principals = {str(row[0]) for row in db.execute(
+            "SELECT principal_id FROM omnis.api_credential WHERE tenant_id = %s", (tenant_a,)).fetchall()}
+        assert credential_principals == {str(actor_a), str(suspended_actor), str(disabled_actor)}
+        revoked = db.execute(
+            "UPDATE omnis.api_credential SET revoked_at = now() "
+            "WHERE tenant_id = %s AND principal_id = %s AND revoked_at IS NULL RETURNING credential_id",
+            (tenant_a, suspended_actor),
+        ).fetchall()
+        assert len(revoked) == 1
+
+    with _runtime_connection(assistant_rls_dsn) as db:
+        db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant_a,))
+        db.execute("SELECT set_config('omnis.principal_id', %s, true)", (disabled_actor,))
+        assert db.execute("SELECT conversation_id FROM omnis.tenant_assistant_conversation WHERE tenant_id = %s",
+                          (tenant_a,)).fetchall() == []
+        assert db.execute("SELECT monthly_request_limit FROM omnis.tenant_usage_policy WHERE tenant_id = %s",
+                          (tenant_a,)).fetchall() == []
+        assert db.execute("SELECT usage_id FROM omnis.tenant_usage_event WHERE tenant_id = %s",
+                          (tenant_a,)).fetchall() == []
+        assert db.execute("SELECT credential_id FROM omnis.api_credential WHERE tenant_id = %s AND principal_id = %s",
+                          (tenant_a, disabled_actor)).fetchall() == []
+        with pytest.raises(psycopg.Error):
+            db.execute("INSERT INTO omnis.tenant_assistant_conversation (tenant_id, created_by, title) VALUES (%s, %s, 'blocked')",
+                       (tenant_a, disabled_actor))
+        with pytest.raises(psycopg.Error):
+            db.execute("INSERT INTO omnis.tenant_usage_event (tenant_id, principal_id, operation, outcome) VALUES (%s, %s, 'spoof', 'accepted')",
+                       (tenant_a, actor_a))
+
+    with _runtime_connection(assistant_rls_dsn) as db:
+        db.execute("SELECT set_config('omnis.tenant_id', %s, true)", (suspended_tenant,))
+        db.execute("SELECT set_config('omnis.principal_id', %s, true)", (suspended_tenant_actor,))
+        assert db.execute("SELECT conversation_id FROM omnis.tenant_assistant_conversation WHERE tenant_id = %s",
+                          (suspended_tenant,)).fetchall() == []
