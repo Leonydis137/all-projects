@@ -11,7 +11,7 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "scipy>=1.11",
     "statsmodels>=0.14",
-    "cryptography>=42",
+    "cryptography>=50.0.2",
 ]
 
 [tool.vercel]

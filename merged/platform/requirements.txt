@@ -9,5 +9,5 @@ psycopg[binary]>=3.2
 scipy>=1.11
 statsmodels>=0.14
 # needed by the merged COVENANT package imports
-cryptography>=42
+cryptography>=50.0.2
 pytest>=8
