@@ -1,7 +1,28 @@
 # Author: Juan-Louw Greyling <juanlouw.greyling@gmail.com>
 services:
   omnis:
-    build: { context: .., dockerfile: platform/Dockerfile }
-    ports: ["8080:8080"]
-    env_file: [.env]
+    build:
+      context: ..
+      dockerfile: platform/Dockerfile
+    ports:
+      - "${OMNIS_BIND_ADDRESS:-127.0.0.1}:8080:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OMNIS_EVIDENCE_DB: /data/evidence.sqlite3
+    volumes:
+      - omnis-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
     restart: unless-stopped
+    stop_grace_period: 20s
+
+volumes:
+  omnis-data:
