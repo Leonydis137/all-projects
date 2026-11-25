@@ -417,7 +417,11 @@ def test_tenant_admin_member_lifecycle_and_credential_revocation(postgres_dsn):
         )
 
     admin.update_member(tenant, owner, "admin", "active", owner, "owner", audit)
-    assert {item["role"] for item in admin.list_members(tenant)} == {"owner", "admin"}
+    assert {item["role"] for item in admin.list_members(tenant, owner)} == {"owner", "admin"}
+    overview = admin.overview(tenant, owner)
+    assert overview["credential_count"] == 2
+    assert overview["active_credential_count"] == 1
+    assert len(admin.list_credentials(tenant, owner)) == 2
     assert audit.verify(tenant)["valid"] is True
 
 
