@@ -188,8 +188,25 @@ def test_postgres_verification_detects_denormalized_column_mismatch(postgres_dsn
     import psycopg
     from datetime import datetime
     from omnis.evidence import _canonical, _validate
+    from omnis.postgres_evidence import PostgresEvidenceLedger
 
     clean = _validate(_record("column-mismatch-" + uuid4().hex))
+
+    class TransactionView:
+        """Share the test transaction without allowing the adapter to commit it."""
+
+        def __init__(self, connection):
+            self.connection = connection
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def __getattr__(self, name):
+            return getattr(self.connection, name)
+
     with psycopg.connect(postgres_dsn) as db:
         previous = db.execute(
             "SELECT record_hash FROM omnis.evidence ORDER BY sequence DESC LIMIT 1"
@@ -206,7 +223,15 @@ def test_postgres_verification_detects_denormalized_column_mismatch(postgres_dsn
              clean["acquisition_method"], clean["license"],
              clean["submitted_by"], json.dumps(clean), previous_hash, digest),
         )
-    result = _ledger(postgres_dsn).verify()
+        # The deliberately corrupted row must be visible to verification but must
+        # not poison the shared disposable database for later integration tests.
+        ledger = PostgresEvidenceLedger(
+            postgres_dsn,
+            connect_factory=lambda: TransactionView(db),
+        )
+        result = ledger.verify()
+        db.rollback()
+
     assert result["valid"] is False
     assert result["reason"] == "column_mismatch"
 
