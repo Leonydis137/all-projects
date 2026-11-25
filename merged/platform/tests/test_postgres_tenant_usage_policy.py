@@ -26,6 +26,7 @@ MIGRATIONS = (
     "013_tenant_usage_metering.sql",
     "014_tenant_usage_policy_member_reads.sql",
     "015_tenant_audit_active_actor.sql",
+    "016_tenant_evidence_rule_active_actor.sql",
 )
 
 

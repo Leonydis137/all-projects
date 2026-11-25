@@ -64,8 +64,10 @@ class TenantDecisionRuleStore:
                 "action": action.strip(), "priority": priority}
 
     @staticmethod
-    def _scope(cur, tenant: str) -> None:
+    def _scope(cur, tenant: str, actor: str | None = None) -> None:
         cur.execute("SELECT set_config('omnis.tenant_id', %s, true)", (tenant,))
+        if actor is not None:
+            cur.execute("SELECT set_config('omnis.principal_id', %s, true)", (actor,))
 
     @staticmethod
     def _decode(row: dict[str, Any]) -> dict[str, Any]:
@@ -98,7 +100,7 @@ class TenantDecisionRuleStore:
         item = self._validate(rule)
         with self._connect() as db:
             with db.cursor() as cur:
-                self._scope(cur, tenant)
+                self._scope(cur, tenant, actor)
                 cur.execute(
                     """INSERT INTO omnis.tenant_decision_rule
                        (tenant_id, name, field, comparison, value, action, priority, created_by, updated_by)
@@ -121,7 +123,7 @@ class TenantDecisionRuleStore:
         item = self._validate(rule)
         with self._connect() as db:
             with db.cursor() as cur:
-                self._scope(cur, tenant)
+                self._scope(cur, tenant, actor)
                 cur.execute(
                     """UPDATE omnis.tenant_decision_rule
                        SET name = %s, field = %s, comparison = %s, value = %s::jsonb,
@@ -145,7 +147,7 @@ class TenantDecisionRuleStore:
         identifier = self._uuid(rule_id, "rule_id")
         with self._connect() as db:
             with db.cursor() as cur:
-                self._scope(cur, tenant)
+                self._scope(cur, tenant, actor)
                 cur.execute(
                     """DELETE FROM omnis.tenant_decision_rule
                        WHERE tenant_id = %s AND rule_id = %s
