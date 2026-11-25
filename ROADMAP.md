@@ -23,6 +23,7 @@ This roadmap describes the next engineering stages for the unified monorepo. Wor
 - [ ] Execute the complete PostgreSQL migration sequence against a clean PostgreSQL 16 database in CI, including migration 004's non-transactional index creation.
 - [ ] Expand integration coverage for tenant identity, actor-attributed audit events, evidence writes, assistant conversations, and usage metering.
 - [ ] Verify quota enforcement under concurrent requests and prove failed/rolled-back requests do not double-charge usage.
+- [x] Evaluate minute/month boundaries using one wall-clock decision timestamp captured after the per-tenant metering lock, and persist that same timestamp to usage events and counters.
 - [ ] Add backup/restore and evidence-chain verification procedures with a tested recovery exercise.
 - [ ] Add operational health signals for database readiness, migration compatibility, and storage durability without exposing sensitive internals.
 
