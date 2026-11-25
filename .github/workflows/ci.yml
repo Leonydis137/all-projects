@@ -3,46 +3,81 @@ on:
   push:
     branches: [main, unified]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
-  detect:
+  catalog:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.m.outputs.matrix }}
+      matrix: ${{ steps.matrix.outputs.value }}
     steps:
       - uses: actions/checkout@v4
-      - id: m
-        shell: bash
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate the root project catalog and runner
         run: |
           set -euo pipefail
-          test -s merged/sources/projects.json
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          python - <<'PY'
           import json
-          import sys
           from pathlib import Path
 
-          source = Path("merged/sources/projects.json")
-          payload = json.loads(source.read_text(encoding="utf-8"))
-          projects = payload.get("projects")
-          if not isinstance(projects, list):
-              raise SystemExit("projects.json must contain a projects array")
-          selected = [
-              p for p in projects
-              if isinstance(p, dict) and p.get("kind") in ("node", "python")
-              and isinstance(p.get("path"), str) and p["path"]
-          ]
-          if not selected:
-              raise SystemExit("No node/python projects found for CI matrix")
-          matrix = {"include": selected}
-          encoded = json.dumps(matrix, separators=(",", ":"))
-          print(f"Selected {len(selected)} projects; matrix payload {len(encoded)} bytes", file=sys.stderr)
-          print("matrix=" + encoded)
+          catalog = json.loads(Path("projects.json").read_text(encoding="utf-8"))
+          projects = catalog.get("projects")
+          if not isinstance(projects, list) or not projects:
+              raise SystemExit("projects.json must contain a non-empty projects array")
+          seen = set()
+          supported = {"node", "expo", "pnpm", "python", "static", "android"}
+          for item in projects:
+              if not isinstance(item, dict):
+                  raise SystemExit("every project entry must be an object")
+              path = item.get("path")
+              kind = item.get("kind")
+              directory = item.get("dir", path)
+              if not isinstance(path, str) or not path or path in seen:
+                  raise SystemExit(f"invalid or duplicate project path: {path!r}")
+              seen.add(path)
+              if kind not in supported:
+                  raise SystemExit(f"unsupported project kind for {path}: {kind!r}")
+              candidate = Path(directory)
+              if candidate.is_absolute() or ".." in candidate.parts or not candidate.is_dir():
+                  raise SystemExit(f"project directory is missing or unsafe: {directory}")
+          print(f"Validated {len(projects)} catalog entries across {len(supported)} supported kinds.")
           PY
-  test:
-    needs: detect
+      - id: matrix
+        name: Build supported project test matrix
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+
+          catalog = json.loads(Path("projects.json").read_text(encoding="utf-8"))
+          selected = []
+          for item in catalog["projects"]:
+              kind = item["kind"]
+              directory = Path(item.get("dir", item["path"]))
+              if kind in {"node", "expo", "pnpm"} and (directory / "package.json").is_file():
+                  selected.append({"path": item["path"], "dir": str(directory), "kind": kind})
+              elif kind == "python" and item["path"] != "merged/platform" and any((directory / name).is_file() for name in ("requirements.txt", "pyproject.toml", "setup.py")):
+                  selected.append({"path": item["path"], "dir": str(directory), "kind": kind})
+          if not selected:
+              raise SystemExit("No installable Node/Python projects found for CI")
+          print("value=" + json.dumps({"include": selected}, separators=(",", ":")))
+          print(f"Selected {len(selected)} installable projects.", file=__import__("sys").stderr)
+          PY
+          bash -n scripts/projects.sh
+          bash scripts/projects.sh list
+
+  project-tests:
+    needs: catalog
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.detect.outputs.matrix) }}
+      matrix:
+        include: ${{ fromJson(needs.catalog.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,9 +85,60 @@ jobs:
           node-version: 20
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - run: bash merged/sources/scripts/projects.sh install ${{ matrix.path }}
-      - run: bash merged/sources/scripts/projects.sh test ${{ matrix.path }}
+          python-version: "3.12"
+      - name: Enable pnpm
+        if: matrix.kind == 'pnpm'
+        run: corepack enable
+      - name: Install project dependencies
+        run: bash scripts/projects.sh install "${{ matrix.path }}"
+      - name: Run project tests
+        run: bash scripts/projects.sh test "${{ matrix.path }}"
+
+  static-and-android:
+    needs: catalog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Validate static sites and Android build inputs
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          catalog = json.loads(Path("projects.json").read_text(encoding="utf-8"))
+          for item in catalog["projects"]:
+              kind = item["kind"]
+              directory = Path(item.get("dir", item["path"]))
+              if kind == "static":
+                  if not any(directory.rglob("index.html")):
+                      raise SystemExit(f"static project has no index.html: {directory}")
+                  print(f"STATIC OK: {item['path']}")
+              elif kind == "android":
+                  gradle_files = list(directory.glob("build.gradle")) + list(directory.glob("build.gradle.kts")) + list(directory.glob("app/build.gradle")) + list(directory.glob("app/build.gradle.kts"))
+                  if not gradle_files:
+                      raise SystemExit(f"Android project has no Gradle build file: {directory}")
+                  wrapper = directory / "gradlew"
+                  if wrapper.is_file():
+                      print(f"ANDROID BUILD: {item['path']}")
+                  else:
+                      print(f"ANDROID INPUTS OK; compile deferred (no checked-in Gradle wrapper): {item['path']}")
+          PY
+          while IFS=$'\t' read -r path kind dir; do
+            if [[ "$kind" == android && -x "$dir/gradlew" ]]; then
+              (cd "$dir" && ./gradlew test)
+            fi
+          done < <(python - <<'PY'
+          import json
+          for p in json.load(open("projects.json", encoding="utf-8"))["projects"]:
+              print(p["path"], p["kind"], p.get("dir", p["path"]), sep="\t")
+          PY
+          )
+
   platform:
     runs-on: ubuntu-latest
     services:
@@ -74,16 +160,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Verify platform test inputs
-        run: |
-          set -euxo pipefail
-          test -s merged/platform/requirements.txt
-          test -d merged/platform/omnis
-          test -d merged/platform/tests
-          python --version
       - name: Install platform dependencies
         run: |
-          python -m pip install --upgrade pip
           python -m pip install -r merged/platform/requirements.txt
           python -m pip check
       - name: Run platform contract tests
