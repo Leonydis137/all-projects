@@ -21,19 +21,28 @@ def postgres_dsn():
         pytest.skip("OMNIS_TEST_DATABASE_URL is not configured")
     psycopg = pytest.importorskip("psycopg")
     migration_dir = Path(__file__).resolve().parents[1] / "migrations"
+    migrations = (
+        "001_evidence_and_audit.sql",
+        "002_ledger_immutability.sql",
+        "003_audit_event_canonical_payload.sql",
+        "004_evidence_idempotency.sql",
+        "005_case_insensitive_source_uri.sql",
+        "006_tenant_identity.sql",
+        "007_tenant_evidence.sql",
+        "008_identity_row_security.sql",
+        "009_tenant_bound_credentials.sql",
+        "010_tenant_audit.sql",
+        "011_tenant_decision_rules.sql",
+        "012_tenant_assistant_conversations.sql",
+        "013_tenant_usage_metering.sql",
+        "014_tenant_usage_policy_member_reads.sql",
+        "015_tenant_audit_active_actor.sql",
+        "016_tenant_evidence_and_rules_active_actor.sql",
+        "017_tenant_lifecycle_storage_rls.sql",
+    )
     with psycopg.connect(DSN, autocommit=True) as db:
-        db.execute((migration_dir / "001_evidence_and_audit.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "002_ledger_immutability.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "003_audit_event_canonical_payload.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "004_evidence_idempotency.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "005_case_insensitive_source_uri.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "006_tenant_identity.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "007_tenant_evidence.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "008_identity_row_security.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "009_tenant_bound_credentials.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "010_tenant_audit.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "015_tenant_audit_active_actor.sql").read_text(encoding="utf-8"))
-        db.execute((migration_dir / "016_tenant_evidence_active_actor.sql").read_text(encoding="utf-8"))
+        for name in migrations:
+            db.execute((migration_dir / name).read_text(encoding="utf-8"))
     return DSN
 
 
@@ -179,8 +188,25 @@ def test_postgres_verification_detects_denormalized_column_mismatch(postgres_dsn
     import psycopg
     from datetime import datetime
     from omnis.evidence import _canonical, _validate
+    from omnis.postgres_evidence import PostgresEvidenceLedger
 
     clean = _validate(_record("column-mismatch-" + uuid4().hex))
+
+    class TransactionView:
+        """Share the test transaction without allowing the adapter to commit it."""
+
+        def __init__(self, connection):
+            self.connection = connection
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def __getattr__(self, name):
+            return getattr(self.connection, name)
+
     with psycopg.connect(postgres_dsn) as db:
         previous = db.execute(
             "SELECT record_hash FROM omnis.evidence ORDER BY sequence DESC LIMIT 1"
@@ -197,7 +223,15 @@ def test_postgres_verification_detects_denormalized_column_mismatch(postgres_dsn
              clean["acquisition_method"], clean["license"],
              clean["submitted_by"], json.dumps(clean), previous_hash, digest),
         )
-    result = _ledger(postgres_dsn).verify()
+        # The deliberately corrupted row must be visible to verification but must
+        # not poison the shared disposable database for later integration tests.
+        ledger = PostgresEvidenceLedger(
+            postgres_dsn,
+            connect_factory=lambda: TransactionView(db),
+        )
+        result = ledger.verify()
+        db.rollback()
+
     assert result["valid"] is False
     assert result["reason"] == "column_mismatch"
 
@@ -416,7 +450,11 @@ def test_tenant_admin_member_lifecycle_and_credential_revocation(postgres_dsn):
         )
 
     admin.update_member(tenant, owner, "admin", "active", owner, "owner", audit)
-    assert {item["role"] for item in admin.list_members(tenant)} == {"owner", "admin"}
+    assert {item["role"] for item in admin.list_members(tenant, owner)} == {"owner", "admin"}
+    overview = admin.overview(tenant, owner)
+    assert overview["credential_count"] == 2
+    assert overview["active_credential_count"] == 1
+    assert len(admin.list_credentials(tenant, owner)) == 2
     assert audit.verify(tenant)["valid"] is True
 
 
@@ -516,3 +554,24 @@ def test_tenant_credentials_fail_closed_for_expiry_revocation_and_disabled_ident
             authenticate_api_key(
                 issued["api_token_once"], tenant, dsn=postgres_dsn, pepper=pepper
             )
+
+def test_evidence_idempotency_migration_created_valid_partial_unique_index(postgres_dsn):
+    """Migration 004 must leave its concurrently-created partial index usable."""
+    import psycopg
+
+    with psycopg.connect(postgres_dsn) as db:
+        index = db.execute(
+            """
+            SELECT idx.indisunique, idx.indisvalid, idx.indisready,
+                   pg_get_expr(idx.indpred, idx.indrelid) AS predicate
+            FROM pg_index AS idx
+            JOIN pg_class AS index_class ON index_class.oid = idx.indexrelid
+            JOIN pg_namespace AS namespace ON namespace.oid = index_class.relnamespace
+            WHERE namespace.nspname = 'omnis'
+              AND index_class.relname = 'evidence_idempotency_key_uq'
+            """
+        ).fetchone()
+
+    assert index is not None
+    assert index[0:3] == (True, True, True)
+    assert "idempotency_key IS NOT NULL" in index[3]

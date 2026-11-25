@@ -1,16 +1,17 @@
 # Author: Juan-Louw Greyling <juanlouw.greyling@gmail.com>
 """OMNIS gateway: one FastAPI app exposing the features of every merged project."""
 import os
+import secrets
 import threading
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from . import __version__, assistant, catalog, config, governance, inventory, mathops, sources, stats
 from .audit import audit as memory_audit
@@ -166,7 +167,10 @@ def auth(authorization: Optional[str] = Header(default=None)) -> None:
     # and their storage adapters enforce tenant isolation.
     if not config.API_TOKEN:
         raise HTTPException(503, "API authentication is not configured")
-    if authorization != f"Bearer {config.API_TOKEN}":
+    expected = f"Bearer {config.API_TOKEN}"
+    if not authorization or not secrets.compare_digest(
+        authorization.encode("utf-8"), expected.encode("utf-8")
+    ):
         raise HTTPException(401, "missing or invalid bearer token")
 
 
@@ -200,74 +204,93 @@ def gated(kind: str, attrs: Optional[dict] = None, actor: Optional[str] = None,
 
 
 class Attrs(BaseModel):
-    attributes: dict[str, Any] = Field(default_factory=dict, description="governance attributes, e.g. harm, intent")
+    attributes: dict[str, Any] = Field(default_factory=dict, max_length=64,
+                                      description="governance attributes, e.g. harm, intent")
 
 
 class GovernIn(BaseModel):
-    action: dict[str, Any]
-    context: Optional[dict[str, Any]] = None
+    action: dict[str, Any] = Field(max_length=64)
+    context: Optional[dict[str, Any]] = Field(default=None, max_length=64)
 
 
 class DecideIn(Attrs):
-    context: dict[str, Any]
+    context: dict[str, Any] = Field(max_length=64)
 
 
 class RuleIn(BaseModel):
-    name: str
-    field: str
-    op: str
+    name: str = Field(min_length=1, max_length=120)
+    field: str = Field(min_length=1, max_length=128)
+    op: str = Field(min_length=1, max_length=16)
     value: Any
-    action: str
-    priority: int = 0
+    action: str = Field(min_length=1, max_length=160)
+    priority: int = Field(default=0, ge=-100000, le=100000)
 
 
 class RespondIn(Attrs):
-    emotional_tone: str = "neutral"
-    user_intent: str = "none"
-    environment_state: str = "normal"
+    emotional_tone: str = Field(default="neutral", max_length=80)
+    user_intent: str = Field(default="none", max_length=120)
+    environment_state: str = Field(default="normal", max_length=120)
 
 
 class FeedbackIn(BaseModel):
-    protocol: str
+    protocol: str = Field(min_length=1, max_length=160)
     positive: bool
 
 
 class RecommendIn(Attrs):
-    rows: list[list[float]]
-    query: list[float]
-    k: int = 3
-    labels: Optional[list[str]] = None
+    rows: list[Annotated[list[float], Field(min_length=1, max_length=256)]] = Field(min_length=1, max_length=500)
+    query: list[float] = Field(min_length=1, max_length=256)
+    k: int = Field(default=3, ge=1, le=20)
+    labels: Optional[list[str]] = Field(default=None, max_length=500)
+
+    @field_validator("rows")
+    @classmethod
+    def validate_rows(cls, rows: list[list[float]]) -> list[list[float]]:
+        widths = {len(row) for row in rows}
+        if not widths or min(widths) < 1 or max(widths) > 256:
+            raise ValueError("each recommendation row must contain 1-256 values")
+        if len(widths) != 1:
+            raise ValueError("recommendation rows must have a consistent width")
+        return rows
 
 
 class ABIn(BaseModel):
-    conv_a: int
-    n_a: int
-    conv_b: int
-    n_b: int
+    conv_a: int = Field(ge=0)
+    n_a: int = Field(gt=0)
+    conv_b: int = Field(ge=0)
+    n_b: int = Field(gt=0)
 
 
 class PosteriorIn(BaseModel):
-    bayes_factor: float
-    prior: float = 0.5
+    bayes_factor: float = Field(ge=0)
+    prior: float = Field(default=0.5, gt=0, lt=1)
 
 
 class NumbersIn(BaseModel):
-    numbers: list[int]
+    numbers: list[int] = Field(min_length=1, max_length=100)
 
 
 class ChatIn(Attrs):
-    message: str
-    history: list[dict[str, str]] = Field(default_factory=list)
+    message: str = Field(min_length=1, max_length=12000)
+    history: list[dict[str, str]] = Field(default_factory=list, max_length=40)
+
+    @field_validator("history")
+    @classmethod
+    def validate_history(cls, history: list[dict[str, str]]) -> list[dict[str, str]]:
+        for item in history:
+            if len(item) > 4 or any(len(key) > 32 or len(value) > 12000 for key, value in item.items()):
+                raise ValueError("history entries exceed the allowed size")
+        return history
 
 
 class EvidenceIn(BaseModel):
-    source_uri: str
-    content_sha256: str
-    acquired_at: str
-    acquisition_method: str
-    license: str
-    submitted_by: str
-    idempotency_key: Optional[str] = None
+    source_uri: str = Field(min_length=1, max_length=2048)
+    content_sha256: str = Field(min_length=64, max_length=64)
+    acquired_at: str = Field(min_length=1, max_length=64)
+    acquisition_method: str = Field(min_length=1, max_length=120)
+    license: str = Field(min_length=1, max_length=256)
+    submitted_by: str = Field(min_length=1, max_length=160)
+    idempotency_key: Optional[str] = Field(default=None, max_length=256)
 
 
 class SourceFetchIn(BaseModel):
@@ -275,12 +298,12 @@ class SourceFetchIn(BaseModel):
     license: str = Field(default="unspecified", min_length=1, max_length=256)
 
 class TenantEvidenceIn(BaseModel):
-    source_uri: str
-    content_sha256: str
-    acquired_at: str
-    acquisition_method: str
-    license: str
-    idempotency_key: Optional[str] = None
+    source_uri: str = Field(min_length=1, max_length=2048)
+    content_sha256: str = Field(min_length=64, max_length=64)
+    acquired_at: str = Field(min_length=1, max_length=64)
+    acquisition_method: str = Field(min_length=1, max_length=120)
+    license: str = Field(min_length=1, max_length=256)
+    idempotency_key: Optional[str] = Field(default=None, max_length=256)
 
 class TenantMemberIn(BaseModel):
     email: str = Field(min_length=3, max_length=320)
@@ -289,8 +312,8 @@ class TenantMemberIn(BaseModel):
 
 
 class TenantMemberUpdateIn(BaseModel):
-    role: str
-    status: str = "active"
+    role: str = Field(min_length=1, max_length=16)
+    status: str = Field(default="active", max_length=16)
 
 
 class TenantAssistantConversationIn(BaseModel):
@@ -311,7 +334,7 @@ class TenantDecisionRuleIn(BaseModel):
 
 
 class TenantCredentialIn(BaseModel):
-    principal_id: str
+    principal_id: str = Field(min_length=36, max_length=36)
     label: str = Field(min_length=1, max_length=100)
     expires_in_days: int = Field(default=90, ge=1, le=365)
 
@@ -341,8 +364,7 @@ def health():
 
         healthy = audit_valid and evidence_status["valid"]
         payload = {"status": "ok" if healthy else "degraded", "version": __version__,
-                   "sources": str(config.SOURCES), "sources_present": config.SOURCES.is_dir(),
-                   "import_roots": sources.wire() or "already wired", "audit_chain_valid": audit_valid,
+                   "sources_present": config.SOURCES.is_dir(), "audit_chain_valid": audit_valid,
                    "evidence_ledger": evidence_status, "assistant_configured": bool(config.ANTHROPIC_API_KEY)}
         status_code = 200 if healthy else 503
         _health_cache["checked_at"] = time.monotonic()
@@ -472,7 +494,7 @@ def tenant_admin_overview(principal: Principal = Depends(tenant_identity)) -> di
     if not principal.allows("tenant:manage"):
         raise HTTPException(403, "tenant role lacks tenant:manage")
     try:
-        return {"overview": _tenant_admin_store().overview(principal.tenant_id)}
+        return {"overview": _tenant_admin_store().overview(principal.tenant_id, principal.principal_id)}
     except TenantAdminError as exc:
         raise HTTPException(404, str(exc)) from exc
     except TenantAdminUnavailable as exc:
@@ -484,7 +506,7 @@ def list_tenant_members(principal: Principal = Depends(tenant_identity)) -> dict
     if not principal.allows("members:manage"):
         raise HTTPException(403, "tenant role lacks members:manage")
     try:
-        return {"members": _tenant_admin_store().list_members(principal.tenant_id)}
+        return {"members": _tenant_admin_store().list_members(principal.tenant_id, principal.principal_id)}
     except TenantAdminUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
 
@@ -529,7 +551,7 @@ def list_tenant_credentials(principal: Principal = Depends(tenant_identity)) -> 
     if not principal.allows("credentials:manage"):
         raise HTTPException(403, "tenant role lacks credentials:manage")
     try:
-        return {"credentials": _tenant_admin_store().list_credentials(principal.tenant_id)}
+        return {"credentials": _tenant_admin_store().list_credentials(principal.tenant_id, principal.principal_id)}
     except TenantAdminUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
 
@@ -741,7 +763,7 @@ def list_tenant_decision_rules(principal: Principal = Depends(tenant_identity)) 
     if not principal.allows("decision_rules:read"):
         raise HTTPException(403, "tenant role lacks decision_rules:read")
     try:
-        return {"rules": _tenant_rule_store().list_rules(principal.tenant_id, include_disabled=True)}
+        return {"rules": _tenant_rule_store().list_rules(principal.tenant_id, include_disabled=True, actor_id=principal.principal_id)}
     except TenantRuleUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
 
@@ -816,7 +838,7 @@ def tenant_decide(body: DecideIn, principal: Principal = Depends(tenant_identity
     _tenant_operation(principal, "tenant.decision", body.attributes, body.context)
     decision_engine = default_engine()
     if tenant_decision_rules is not None:
-        for stored in tenant_decision_rules.list_rules(principal.tenant_id):
+        for stored in tenant_decision_rules.list_rules(principal.tenant_id, actor_id=principal.principal_id):
             decision_engine.add_rule(
                 Rule(stored["name"], stored["field"], stored["op"], stored["value"],
                      stored["action"], stored["priority"])
