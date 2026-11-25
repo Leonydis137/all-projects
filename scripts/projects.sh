@@ -38,12 +38,19 @@ for item in projects:
         raise SystemExit(f"invalid or duplicate project path: {path!r}")
     if not isinstance(directory, str) or not directory:
         raise SystemExit(f"invalid directory for {path}")
-    if kind not in supported:
+    if not isinstance(kind, str) or kind not in supported:
         raise SystemExit(f"unsupported project kind for {path}: {kind!r}")
-    if Path(directory).is_absolute() or ".." in Path(directory).parts:
-        raise SystemExit(f"unsafe project directory for {path}: {directory}")
     if any("\t" in value or "\n" in value for value in (path, kind, directory)):
         raise SystemExit(f"tab/newline is not allowed in catalog fields: {path}")
+    candidate = Path(directory)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise SystemExit(f"unsafe project directory for {path}: {directory}")
+    root = Path.cwd().resolve()
+    resolved = (root / candidate).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        raise SystemExit(f"project directory escapes repository root: {directory}")
     seen.add(path)
     print(path, kind, directory, sep="\t")
 PY
