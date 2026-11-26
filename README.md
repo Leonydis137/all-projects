@@ -8,6 +8,7 @@ Full history of every original repo is preserved.
 | Area | What lives here |
 |---|---|
 | `apps/web` | React/TS web apps: Vantage-ARS, OmniGPT, Quantum Flow OS, Neural Sovereign, Project Genesis, CodeEvolveAI, Site Mirror Studio, SA Threads, SAT portal |
+| `apps/edge` | Vantage Sentinel: live Cloudflare Worker control plane observing the deployed office, GitHub pipeline and bound D1 database, with grounded AI briefings |
 | `apps/sites` | Static sites: portfolio, Jacobs Bay |
 | `apps/mobile` | Android (Kotlin) and React Native/Expo apps |
 | `services` | Python services: COVENANT (3 repos merged into one tested package), AEON engine, autonomous agent, Codegenie, Streamlit apps |

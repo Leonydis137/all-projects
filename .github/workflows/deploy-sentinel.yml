@@ -1,0 +1,66 @@
+name: Deploy Vantage Sentinel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/edge/vantage-sentinel/**"
+      - ".github/workflows/deploy-sentinel.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-vantage-sentinel
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Run edge unit tests
+        working-directory: apps/edge/vantage-sentinel
+        run: npm test
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install wrangler
+        run: npm install --no-save wrangler@4
+      - name: Apply additive Sentinel schema
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler@4 d1 execute vantage-data --config apps/edge/vantage-sentinel/wrangler.toml --remote --file=apps/edge/vantage-sentinel/schema.sql --yes
+      - name: Deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler@4 deploy --config apps/edge/vantage-sentinel/wrangler.toml
+      - name: Install Worker secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.SENTINEL_GITHUB_TOKEN }}
+          SENTINEL_ADMIN_TOKEN: ${{ secrets.SENTINEL_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          for name in OPENAI_API_KEY GITHUB_TOKEN CLOUDFLARE_API_TOKEN SENTINEL_ADMIN_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name repository secret is missing"
+              exit 1
+            fi
+          done
+          printf '%s' "$OPENAI_API_KEY" | npx wrangler@4 secret put OPENAI_API_KEY --config apps/edge/vantage-sentinel/wrangler.toml
+          printf '%s' "$GITHUB_TOKEN" | npx wrangler@4 secret put GITHUB_TOKEN --config apps/edge/vantage-sentinel/wrangler.toml
+          printf '%s' "$CLOUDFLARE_API_TOKEN" | npx wrangler@4 secret put CLOUDFLARE_API_TOKEN --config apps/edge/vantage-sentinel/wrangler.toml
+          printf '%s' "$SENTINEL_ADMIN_TOKEN" | npx wrangler@4 secret put SENTINEL_ADMIN_TOKEN --config apps/edge/vantage-sentinel/wrangler.toml

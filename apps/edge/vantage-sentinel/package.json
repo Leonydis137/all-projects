@@ -1,0 +1,14 @@
+{
+  "name": "vantage-sentinel",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Evidence-first edge control plane for Vantage-ARS: real health signals, grounded AI briefings, durable snapshots.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "deploy": "wrangler deploy --config wrangler.toml"
+  }
+}

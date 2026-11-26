@@ -63,7 +63,7 @@ jobs:
               if kind in {"node", "expo", "pnpm"} and (directory / "package.json").is_file():
                   package = json.loads((directory / "package.json").read_text(encoding="utf-8"))
                   node_engine = package.get("engines", {}).get("node", "")
-          match = re.search(r"(?:>=|\^|~)?\s*(\d+)", node_engine)
+                  match = re.search(r"(?:>=|\^|~)?\s*(\d+)", node_engine)
                   node_version = match.group(1) if match else "20"
                   selected.append({
                       "path": item["path"],

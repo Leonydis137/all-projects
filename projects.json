@@ -12,6 +12,11 @@
    "summary": "Vantage-ARS: public site (v5) + legacy founder workspace (workspace-v2/)"
   },
   {
+   "path": "apps/edge/vantage-sentinel",
+   "kind": "node",
+   "summary": "Vantage Sentinel: evidence-first Cloudflare Worker control plane with grounded AI briefings and D1 snapshots"
+  },
+  {
    "path": "apps/web/omnigpt-web",
    "kind": "node",
    "summary": "OmniGPT web assistant (React + Vite)"

@@ -1,0 +1,27 @@
+name = "vantage-sentinel"
+main = "src/worker.js"
+compatibility_date = "2026-11-26"
+account_id = "8501d3eeac693b7ada630058ee5e081a"
+
+workers_dev = true
+preview_urls = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vantage-data"
+database_id = "9eed1616-7546-4855-a150-11a92fb7621c"
+
+# Public, verified sources. Secrets are supplied with `wrangler secret put`,
+# never committed here: OPENAI_API_KEY, GITHUB_TOKEN, SENTINEL_ADMIN_TOKEN.
+[vars]
+APP_HEALTH_URL = "https://www.vantage-ars.co.za/api/health"
+WORKER_SCRIPT_NAME = "vantage-ars"
+CLOUDFLARE_ACCOUNT_ID = "8501d3eeac693b7ada630058ee5e081a"
+GITHUB_REPO = "Leonydis137/all-projects"
+OPENAI_MODEL = "gpt-4o-mini"
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+[observability]
+enabled = true
